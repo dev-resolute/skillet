@@ -1,0 +1,42 @@
+{
+  "name": "skillet-core",
+  "version": "0.1.0",
+  "description": "Docs-to-pi-skill generator: turn API docs into verified curl+bash skills",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "skillet": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "skillet": "node dist/cli.js"
+  },
+  "keywords": [
+    "pi",
+    "skills",
+    "openapi",
+    "api-docs",
+    "codegen"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.78.1",
+    "@earendil-works/pi-ai": "^0.78.1",
+    "@readme/openapi-parser": "^2.7.0",
+    "typebox": "^1.1.38"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

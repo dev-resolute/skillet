@@ -156,9 +156,11 @@ function writeSkillFilesTool(ctx: GenerationContext) {
     execute: async (_toolCallId: string, params: unknown) => {
       const { files } = params as { files: SkillFile[] };
       ctx.files = files;
+      const shouldStop = ctx.verification.attempts >= ctx.maxRetries && ctx.verification.status !== 'passed';
       return {
         content: [{ type: 'text' as const, text: `Wrote ${files.length} files.` }],
         details: {},
+        terminate: shouldStop,
       };
     },
   };
@@ -205,9 +207,11 @@ function runTestTool(ctx: GenerationContext) {
         ctx.verification.lastRequest = request;
         ctx.verification.lastResponse = { status: result.status, body: result.body };
         ctx.verification.report = result.error;
+        const shouldStop = ctx.verification.attempts >= ctx.maxRetries;
         return {
           content: [{ type: 'text' as const, text: `TEST FAILED (${result.status}): ${result.error || result.body}` }],
           details: {},
+          terminate: shouldStop,
         };
       }
     },

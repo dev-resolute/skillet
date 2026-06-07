@@ -61,11 +61,7 @@ export async function runTest(
   const headers = new Headers(request.headers);
   if (options.credentials) {
     for (const [key, value] of Object.entries(options.credentials)) {
-      if (key.toLowerCase() === 'authorization' || key.toLowerCase().startsWith('x-')) {
-        headers.set(key, value);
-      } else {
-        headers.set(key, value);
-      }
+      headers.set(key, value);
     }
   }
 

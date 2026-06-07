@@ -69,7 +69,7 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
   };
 
   // ── 2. Build the agent with custom tools ───────────────────────────────────
-  const model = (options.model as any) ?? getModel('anthropic', 'claude-sonnet-4-20250514')!;
+  const model = (options.model as any) ?? getModel('openai', 'gpt-4o-mini')!;
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(ctx),
@@ -125,28 +125,18 @@ ${ctx.docs.slice(0, 8000)}
 1. The generated bash must read credentials from environment variables.
 2. NEVER embed secrets in the generated files.
 3. The curl command must be safe (quoted variables, no eval).
-4. Use the 
-write_skill_files
- tool to emit the skill files.
-5. Use the 
-run_test
- tool to verify the generated call against the live API. The test must pass before you finish.
+4. Use the write_skill_files tool to emit the skill files.
+5. Use the run_test tool to verify the generated call against the live API. The test must pass before you finish.
 6. If the test fails, read the error, fix the skill, and re-test. You may retry up to ${ctx.maxRetries} times.
 7. If you cannot make it pass, return the best-effort skill and a clear failure report.
+8. For GET requests, do NOT include a body field in the run_test call.
+9. The bash script must use the exact API base URL: ${ctx.apiBaseUrl}
 
 ## Output format
 
-Emit a directory with:
-- SKILL.md (frontmatter: name, description, usage)
-- A bash script for the action (e.g. 
-search
-) that parses args and runs curl
-
-The skill name should be noun-shaped (e.g. 
-jira
-) with a verb subcommand (e.g. 
-search
-).
+Emit exactly these files via write_skill_files:
+- SKILL.md (frontmatter with name, description, usage)
+- A bash script named after the action verb (e.g. "search", "list", "get") that parses args and runs curl
 `;
 }
 

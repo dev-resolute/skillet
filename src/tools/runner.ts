@@ -70,11 +70,14 @@ export async function runTest(
   }
 
   try {
-    const response = await fetch(request.url, {
+    const fetchOptions: RequestInit = {
       method: request.method,
       headers,
-      body: request.body,
-    });
+    };
+    if (request.body && request.body.length > 0) {
+      fetchOptions.body = request.body;
+    }
+    const response = await fetch(request.url, fetchOptions);
 
     const body = await response.text();
     return {

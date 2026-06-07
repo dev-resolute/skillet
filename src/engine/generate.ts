@@ -69,10 +69,11 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
   };
 
   // ── 2. Build the agent with custom tools ───────────────────────────────────
+  const model = (options.model as any) ?? getModel('anthropic', 'claude-sonnet-4-20250514')!;
   const agent = new Agent({
     initialState: {
       systemPrompt: buildSystemPrompt(ctx),
-      model: getModel('anthropic', 'claude-sonnet-4-20250514')!,
+      model,
       tools: [
         writeSkillFilesTool(ctx),
         runTestTool(ctx),

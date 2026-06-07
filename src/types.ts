@@ -47,5 +47,5 @@ export interface GenerateOptions {
   apiDomain?: string;
   credentials?: Record<string, string>;
   maxRetries?: number;
-  model?: string;
+  model?: unknown;
 }

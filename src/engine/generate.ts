@@ -1,110 +1,69 @@
 import { Agent } from '@earendil-works/pi-agent-core';
-import { getModel, Type } from '@earendil-works/pi-ai';
-import type { GenerateOptions, SkillResult, SkillFile, StructuredRequest } from '../types.js';
+import { getModel } from '@earendil-works/pi-ai';
+import type { GenerateOptions, SkillResult } from '../types.js';
 import { fetchDocs, fetchSpec } from '../tools/fetch.js';
 import { detectAuth, sliceSpec } from '../tools/spec.js';
-import { runTest, classifyMethod } from '../tools/runner.js';
+import { createStateManager } from './state.js';
+import { createSkillWriter } from './skill-writer.js';
+import { createVerificationRunner } from './verification-runner.js';
+import { createWriteSkillFilesTool } from './tools/write-skill.js';
+import { createRunTestTool } from './tools/run-test.js';
 
 const DEFAULT_RETRIES = 3;
 
-interface GenerationContext {
-  docs: string;
-  spec: string | null;
-  auth: string;
-  slice: string | null;
-  files: SkillFile[];
-  verification: SkillResult['verification'];
-  credentials: Record<string, string>;
-  apiDomain: string;
-  apiBaseUrl: string;
-  action: string;
-  maxRetries: number;
-}
-
 export async function generateSkill(options: GenerateOptions): Promise<SkillResult> {
-  const _maxRetries = options.maxRetries ?? DEFAULT_RETRIES;
+  const maxRetries = options.maxRetries ?? DEFAULT_RETRIES;
   const apiDomain = options.apiDomain ?? new URL(options.docsUrl).hostname;
   const apiBaseUrl = options.apiBaseUrl ?? `https://${apiDomain}`;
 
-  // ── 1. Pre-stage: gather deterministic data ───────────────────────────────
+  // Pre-stage: gather deterministic data
   const docs = await fetchDocs(options.docsUrl);
+  const spec = await discoverSpec(options.docsUrl);
+  const auth = JSON.stringify(spec ? await detectAuth(spec) : { type: 'unsupported', reason: 'No spec found' });
+  const slice = spec ? JSON.stringify((await sliceSpec(spec, options.action)) ?? null, null, 2) : null;
 
-  // Spec discovery: try common suffixes from the docs URL
-  let spec: string | null = null;
-  const specUrls = inferSpecUrls(options.docsUrl);
-  for (const url of specUrls) {
-    try {
-      spec = await fetchSpec(url, 10000);
-      break;
-    } catch {
-      continue;
-    }
-  }
+  // Create state and modules
+  const stateManager = createStateManager({ maxRetries });
+  const skillWriter = createSkillWriter();
+  const verificationRunner = createVerificationRunner();
 
-  const authResult = spec ? await detectAuth(spec) : { type: 'unsupported', reason: 'No spec found' } as const;
-  const auth = JSON.stringify(authResult);
-
-  let slice: string | null = null;
-  if (spec) {
-    const sliced = await sliceSpec(spec, options.action);
-    if (sliced) {
-      slice = JSON.stringify(sliced, null, 2);
-    }
-  }
-
-  const credentials = options.credentials ?? {};
-
-  const ctx: GenerationContext = {
-    docs,
-    spec,
-    auth,
-    slice,
-    files: [],
-    verification: { status: 'skipped', attempts: 0 },
-    credentials,
-    apiDomain,
-    apiBaseUrl,
-    action: options.action,
-    maxRetries: _maxRetries,
-  };
-
-  // ── 2. Build the agent with custom tools ───────────────────────────────────
+  // Build agent with adapter-based tools
   const model = (options.model as any) ?? getModel('openai', 'gpt-4o-mini')!;
   const agent = new Agent({
     initialState: {
-      systemPrompt: buildSystemPrompt(ctx),
+      systemPrompt: buildSystemPrompt({ action: options.action, apiBaseUrl, auth, slice, docs, maxRetries }),
       model,
       tools: [
-        writeSkillFilesTool(ctx),
-        runTestTool(ctx),
+        createWriteSkillFilesTool(stateManager, skillWriter),
+        createRunTestTool(stateManager, verificationRunner, apiDomain, options.credentials ?? {}, maxRetries),
       ],
     },
   });
 
-  // ── 3. Run the generation prompt ────────────────────────────────────────
   await agent.prompt(`Generate a verified skill for the action: ${options.action}`);
 
-  // ── 4. Return result ────────────────────────────────────────────────────────
+  const finalState = stateManager.getState();
   return {
     name: `api/${options.action.replace(/\s+/g, '-').toLowerCase()}`,
-    files: ctx.files,
-    verification: ctx.verification,
+    files: finalState.files,
+    verification: finalState.verification,
   };
 }
 
-function inferSpecUrls(docsUrl: string): string[] {
+async function discoverSpec(docsUrl: string): Promise<string | null> {
   const base = docsUrl.replace(/\/?$/, '');
-  return [
-    `${base}/openapi.json`,
-    `${base}/openapi.yaml`,
-    `${base}/swagger.json`,
-    `${base}/swagger.yaml`,
-    `${base}/api-docs`,
-    `${base}/v3/api-docs`,
+  const specUrls = [
+    `${base}/openapi.json`, `${base}/openapi.yaml`,
+    `${base}/swagger.json`, `${base}/swagger.yaml`,
+    `${base}/api-docs`, `${base}/v3/api-docs`,
   ];
+  for (const url of specUrls) {
+    try { return await fetchSpec(url, 10000); } catch { continue; }
+  }
+  return null;
 }
 
-function buildSystemPrompt(ctx: GenerationContext): string {
+function buildSystemPrompt(ctx: { action: string; apiBaseUrl: string; auth: string; slice: string | null; docs: string; maxRetries: number }): string {
   return `You are skillet — an expert API-to-skill generator.
 
 Your job: produce a verified pi skill (curl + bash + SKILL.md) for a single API action.
@@ -138,82 +97,4 @@ Emit exactly these files via write_skill_files:
 - SKILL.md (frontmatter with name, description, usage)
 - A bash script named after the action verb (e.g. "search", "list", "get") that parses args and runs curl
 `;
-}
-
-function writeSkillFilesTool(ctx: GenerationContext) {
-  return {
-    name: 'write_skill_files',
-    label: 'Write Skill Files',
-    description: 'Write the generated skill files. Provide an array of {path, content} objects.',
-    parameters: Type.Object({
-      files: Type.Array(
-        Type.Object({
-          path: Type.String({ description: 'Relative path within the skill dir, e.g. SKILL.md or search' }),
-          content: Type.String({ description: 'File content' }),
-        })
-      ),
-    }),
-    execute: async (_toolCallId: string, params: unknown) => {
-      const { files } = params as { files: SkillFile[] };
-      ctx.files = files;
-      const shouldStop = ctx.verification.attempts >= ctx.maxRetries && ctx.verification.status !== 'passed';
-      return {
-        content: [{ type: 'text' as const, text: `Wrote ${files.length} files.` }],
-        details: {},
-        terminate: shouldStop,
-      };
-    },
-  };
-}
-
-function runTestTool(ctx: GenerationContext) {
-  return {
-    name: 'run_test',
-    label: 'Run Test',
-    description: 'Execute a structured HTTP request against the live API to verify the skill. Provide {method, url, headers, body}.',
-    parameters: Type.Object({
-      method: Type.String({ description: 'HTTP method' }),
-      url: Type.String({ description: 'Full URL (host must match the API domain)' }),
-      headers: Type.Object({}, { additionalProperties: Type.String(), description: 'Request headers' }),
-      body: Type.Optional(Type.String({ description: 'Request body (JSON string)' })),
-    }),
-    execute: async (_toolCallId: string, params: unknown) => {
-      const request = params as StructuredRequest;
-      const methodClass = classifyMethod(request.method);
-      if (methodClass === 'mutating') {
-        return {
-          content: [{ type: 'text' as const, text: 'VERIFICATION_SKIPPED: Mutating operations are not live-tested by default.' }],
-          details: {},
-        };
-      }
-
-      const result = await runTest(request, {
-        apiDomain: ctx.apiDomain,
-        credentials: ctx.credentials,
-      });
-
-      ctx.verification.attempts += 1;
-
-      if (result.ok) {
-        ctx.verification.status = 'passed';
-        ctx.verification.lastRequest = request;
-        ctx.verification.lastResponse = { status: result.status, body: result.body };
-        return {
-          content: [{ type: 'text' as const, text: `TEST PASSED (${result.status}): ${result.body.slice(0, 500)}` }],
-          details: {},
-        };
-      } else {
-        ctx.verification.status = 'failed';
-        ctx.verification.lastRequest = request;
-        ctx.verification.lastResponse = { status: result.status, body: result.body };
-        ctx.verification.report = result.error;
-        const shouldStop = ctx.verification.attempts >= ctx.maxRetries;
-        return {
-          content: [{ type: 'text' as const, text: `TEST FAILED (${result.status}): ${result.error || result.body}` }],
-          details: {},
-          terminate: shouldStop,
-        };
-      }
-    },
-  };
 }

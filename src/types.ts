@@ -28,6 +28,7 @@ export interface SkillResult {
   name: string;
   files: SkillFile[];
   verification: VerificationResult;
+  promptVersion?: string;
 }
 
 /** Result of verifying a skill against a live API. */
@@ -39,7 +40,58 @@ export interface VerificationResult {
   report?: string;
 }
 
-/** Input to the generation engine. */
+// ── Verification types ──
+
+export type MethodClass = 'read' | 'mutating';
+
+export interface ExecutionResult {
+  ok: boolean;
+  status: number;
+  body: string;
+  error?: string;
+}
+
+export interface RunnerOptions {
+  apiDomain: string;
+  credentials?: Record<string, string>;
+  allowMutating?: boolean;
+}
+
+// ── Spec analysis types ──
+
+export interface SpecSlice {
+  operation: Record<string, unknown>;
+  method: string;
+  path: string;
+  schemas: Record<string, unknown>;
+}
+
+// ── Skill writing types ──
+
+export interface WriteResult {
+  success: boolean;
+  filesWritten: number;
+  errors: string[];
+}
+
+// ── Verification runner types ──
+
+export interface VerificationContext {
+  apiDomain: string;
+  credentials?: Record<string, string>;
+  maxRetries: number;
+  currentAttempts: number;
+  allowMutating?: boolean;
+}
+
+export interface VerificationOutcome {
+  result: ExecutionResult;
+  shouldTerminate: boolean;
+  updatedAttempts: number;
+}
+
+// ── Generation options ──
+
 export interface GenerateOptions {
   docsUrl: string;
   action: string;
@@ -48,4 +100,5 @@ export interface GenerateOptions {
   credentials?: Record<string, string>;
   maxRetries?: number;
   model?: unknown;
+  promptVersion?: string;
 }

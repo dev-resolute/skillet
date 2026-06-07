@@ -1,19 +1,7 @@
-import type { StructuredRequest } from '../types.js';
-import { runTest, classifyMethod, type ExecutionResult } from '../tools/runner.js';
+import type { StructuredRequest, VerificationContext, VerificationOutcome } from '../types.js';
+import { runTest, classifyMethod } from '../tools/runner.js';
 
-export interface VerificationContext {
-  apiDomain: string;
-  credentials?: Record<string, string>;
-  maxRetries: number;
-  currentAttempts: number;
-  allowMutating?: boolean;
-}
-
-export interface VerificationOutcome {
-  result: ExecutionResult;
-  shouldTerminate: boolean;
-  updatedAttempts: number;
-}
+export type { VerificationContext, VerificationOutcome } from '../types.js';
 
 export interface VerificationRunner {
   run(request: StructuredRequest, context: VerificationContext): Promise<VerificationOutcome>;

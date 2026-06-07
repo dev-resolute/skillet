@@ -2,7 +2,7 @@
  * detect_auth and sliceSpec — OpenAPI analysis.
  */
 import OpenAPIParser from '@readme/openapi-parser';
-import type { AuthScheme } from '../types.js';
+import type { AuthScheme, SpecSlice } from '../types.js';
 
 export async function detectAuth(specText: string): Promise<AuthScheme> {
   let spec: Record<string, unknown>;
@@ -61,12 +61,7 @@ function getSecuritySchemes(spec: Record<string, unknown>): Record<string, unkno
   return undefined;
 }
 
-export interface SpecSlice {
-  operation: Record<string, unknown>;
-  method: string;
-  path: string;
-  schemas: Record<string, unknown>;
-}
+export type { SpecSlice } from '../types.js';
 
 export async function sliceSpec(specText: string, action: string): Promise<SpecSlice | null> {
   let spec: Record<string, unknown>;

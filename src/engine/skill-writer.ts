@@ -1,12 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { SkillFile } from '../types.js';
+import type { SkillFile, WriteResult } from '../types.js';
 
-export interface WriteResult {
-  success: boolean;
-  filesWritten: number;
-  errors: string[];
-}
+export type { WriteResult } from '../types.js';
 
 export interface SkillWriter {
   write(files: SkillFile[], outputPath: string): Promise<WriteResult>;

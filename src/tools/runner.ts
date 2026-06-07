@@ -2,28 +2,13 @@
  * run_test — execute a structured request with host pinning and method classification.
  * NEVER runs a shell string; always uses fetch with a pinned host.
  */
-import type { StructuredRequest } from '../types.js';
-
-export type MethodClass = 'read' | 'mutating';
+import type { StructuredRequest, MethodClass, ExecutionResult, RunnerOptions } from '../types.js';
 
 export function classifyMethod(method: string): MethodClass {
   const m = method.toUpperCase();
   if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return 'read';
   if (m === 'POST' || m === 'PUT' || m === 'PATCH' || m === 'DELETE') return 'mutating';
   return 'mutating'; // unknown defaults to mutating
-}
-
-export interface ExecutionResult {
-  ok: boolean;
-  status: number;
-  body: string;
-  error?: string;
-}
-
-export interface RunnerOptions {
-  apiDomain: string;
-  credentials?: Record<string, string>;
-  allowMutating?: boolean;
 }
 
 export async function runTest(

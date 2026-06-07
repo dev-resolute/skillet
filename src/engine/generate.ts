@@ -4,8 +4,6 @@ import type { GenerateOptions, SkillResult } from '../types.js';
 import { fetchDocs, fetchSpec } from '../tools/fetch.js';
 import { detectAuth, sliceSpec } from '../tools/spec.js';
 import { createStateManager } from './state.js';
-import { createSkillWriter } from './skill-writer.js';
-import { createVerificationRunner } from './verification-runner.js';
 import { createWriteSkillFilesTool } from './tools/write-skill.js';
 import { createRunTestTool } from './tools/run-test.js';
 import { createPromptRegistry } from './prompts/registry.js';
@@ -25,8 +23,6 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
 
   // Create state and modules
   const stateManager = createStateManager({ maxRetries });
-  const skillWriter = createSkillWriter();
-  const verificationRunner = createVerificationRunner();
 
   // Build agent with adapter-based tools
   const model = (options.model as any) ?? getModel('openai', 'gpt-4o-mini')!;
@@ -39,8 +35,8 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
       systemPrompt: prompt.build({ action: options.action, apiBaseUrl, auth, slice, docs, maxRetries }),
       model,
       tools: [
-        createWriteSkillFilesTool(stateManager, skillWriter),
-        createRunTestTool(stateManager, verificationRunner, apiDomain, options.credentials ?? {}, maxRetries),
+        createWriteSkillFilesTool(stateManager),
+        createRunTestTool(stateManager, apiDomain, options.credentials ?? {}),
       ],
     },
   });

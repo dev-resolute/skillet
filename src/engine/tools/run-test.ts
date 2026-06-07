@@ -1,14 +1,13 @@
 import { Type } from '@earendil-works/pi-ai';
 import type { StructuredRequest } from '../../types.js';
 import type { StateManager } from '../state.js';
-import type { VerificationRunner } from '../verification-runner.js';
+import { runTest, classifyMethod } from '../../tools/runner.js';
 
 export function createRunTestTool(
   stateManager: StateManager,
-  runner: VerificationRunner,
   apiDomain: string,
   credentials: Record<string, string> = {},
-  maxRetries: number = 3,
+  allowMutating: boolean = false,
 ) {
   return {
     name: 'run_test',
@@ -22,33 +21,31 @@ export function createRunTestTool(
     }),
     execute: async (_toolCallId: string, params: unknown) => {
       const request = params as StructuredRequest;
-      const result = await runner.run(request, {
-        apiDomain,
-        credentials,
-        maxRetries,
-        currentAttempts: stateManager.getAttempts(),
-      });
 
-      stateManager.incrementAttempts();
-      stateManager.updateVerification({
-        status: result.result.ok ? 'passed' : 'failed',
-        lastRequest: request,
-        lastResponse: { status: result.result.status, body: result.result.body },
-        report: result.result.error,
-      });
-
-      if (result.result.ok) {
+      if (classifyMethod(request.method) === 'mutating' && !allowMutating) {
+        const reason = 'Mutating operations are not live-tested by default.';
+        stateManager.recordBlocked(request, reason);
         return {
-          content: [{ type: 'text' as const, text: `TEST PASSED (${result.result.status}): ${result.result.body.slice(0, 500)}` }],
+          content: [{ type: 'text' as const, text: `TEST BLOCKED: ${reason}` }],
           details: {},
-        };
-      } else {
-        return {
-          content: [{ type: 'text' as const, text: `TEST FAILED (${result.result.status}): ${result.result.error || result.result.body}` }],
-          details: {},
-          terminate: result.shouldTerminate,
+          terminate: true,
         };
       }
+
+      const result = await runTest(request, { apiDomain, credentials, allowMutating });
+      stateManager.recordTest(request, result);
+
+      if (result.ok) {
+        return {
+          content: [{ type: 'text' as const, text: `TEST PASSED (${result.status}): ${result.body.slice(0, 500)}` }],
+          details: {},
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: `TEST FAILED (${result.status}): ${result.error || result.body}` }],
+        details: {},
+        terminate: stateManager.shouldTerminate(),
+      };
     },
   };
 }

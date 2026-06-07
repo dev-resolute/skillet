@@ -1,52 +1,82 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRunTestTool } from './run-test.js';
+import { createStateManager } from '../state.js';
 import type { StructuredRequest } from '../../types.js';
 
-// Create mock state manager
-function createMockStateManager() {
-  const state = {
-    verification: { status: 'skipped' as const, attempts: 0 },
-  };
-  return {
-    getVerification: () => ({ ...state.verification }),
-    updateVerification: (update: any) => {
-      state.verification = { ...state.verification, ...update };
-    },
-    incrementAttempts: () => {
-      state.verification.attempts += 1;
-    },
-    getAttempts: () => state.verification.attempts,
-    shouldTerminate: () => false,
-  };
-}
+const get: StructuredRequest = { method: 'GET', url: 'https://api.example.com/users', headers: {} };
+const post: StructuredRequest = { method: 'POST', url: 'https://api.example.com/users', headers: {}, body: '{}' };
 
-// Create mock verification runner
-function createMockVerificationRunner() {
-  return {
-    run: vi.fn().mockResolvedValue({
-      result: { ok: true, status: 200, body: '{"data": "ok"}' },
-      shouldTerminate: false,
-      updatedAttempts: 1,
-    }),
-  };
+function run(tool: ReturnType<typeof createRunTestTool>, request: StructuredRequest) {
+  return tool.execute('tool-call-1', request);
 }
 
 describe('run_test adapter', () => {
-  it('delegates to VerificationRunner and updates state', async () => {
-    const stateManager = createMockStateManager();
-    const runner = createMockVerificationRunner();
-    const tool = createRunTestTool(stateManager, runner);
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
-    const request: StructuredRequest = {
-      method: 'GET',
-      url: 'https://api.example.com/v1/users',
-      headers: {},
-    };
+  it('passing test: records the attempt, does not terminate', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => '{"data":"ok"}',
+    } as Response);
+    const state = createStateManager({ maxRetries: 3 });
+    const tool = createRunTestTool(state, 'api.example.com', {});
 
-    const result = await tool.execute!('tool-call-1', request, new AbortController().signal, undefined);
+    const result = await run(tool, get);
 
-    expect(runner.run).toHaveBeenCalledWith(request, expect.any(Object));
-    expect(stateManager.getAttempts()).toBe(1);
     expect(result.content[0].text).toContain('TEST PASSED');
+    expect(result.terminate).toBeUndefined();
+    expect(state.getVerification().status).toBe('passed');
+    expect(state.getVerification().attempts).toBe(1);
+  });
+
+  it('failing test: records the attempt, terminates only at maxRetries', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'err',
+    } as Response);
+    const state = createStateManager({ maxRetries: 2 });
+    const tool = createRunTestTool(state, 'api.example.com', {});
+
+    const first = await run(tool, get);
+    expect(first.content[0].text).toContain('TEST FAILED');
+    expect(first.terminate).toBe(false);
+
+    const second = await run(tool, get);
+    expect(second.terminate).toBe(true);
+    expect(state.getVerification().attempts).toBe(2);
+  });
+
+  it('blocked mutating op: terminates immediately, never fetches, does not count it', async () => {
+    const state = createStateManager({ maxRetries: 3 });
+    const tool = createRunTestTool(state, 'api.example.com', {});
+
+    const result = await run(tool, post);
+
+    expect(result.content[0].text).toContain('TEST BLOCKED');
+    expect(result.terminate).toBe(true);
+    expect(state.getVerification().attempts).toBe(0);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('runs a mutating op when allowMutating is set', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      text: async () => '{}',
+    } as Response);
+    const state = createStateManager({ maxRetries: 3 });
+    const tool = createRunTestTool(state, 'api.example.com', {}, true);
+
+    const result = await run(tool, post);
+
+    expect(result.content[0].text).toContain('TEST PASSED');
+    expect(state.getVerification().attempts).toBe(1);
   });
 });

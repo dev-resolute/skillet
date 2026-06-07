@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { generateSkill } from './engine/generate.js';
+import { createSkillWriter } from './skill-writer.js';
 
 function showHelp() {
   console.log(`
@@ -109,14 +110,14 @@ async function main() {
     console.log(`   Report: ${result.verification.report}`);
   }
 
-  // Write files to disk
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  await fs.mkdir(outputDir, { recursive: true });
-  for (const file of result.files) {
-    const filePath = path.join(outputDir, file.path);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, file.content, 'utf-8');
+  const writer = createSkillWriter();
+  const writeResult = await writer.write(result.files, outputDir);
+  if (!writeResult.success) {
+    console.error(`\n⚠️  Some files failed to write:`);
+    for (const err of writeResult.errors) {
+      console.error(`  - ${err}`);
+    }
+    process.exit(1);
   }
   console.log(`\n💾 Written to: ${outputDir}/`);
 }

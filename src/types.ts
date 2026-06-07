@@ -74,22 +74,6 @@ export interface WriteResult {
   errors: string[];
 }
 
-// ── Verification runner types ──
-
-export interface VerificationContext {
-  apiDomain: string;
-  credentials?: Record<string, string>;
-  maxRetries: number;
-  currentAttempts: number;
-  allowMutating?: boolean;
-}
-
-export interface VerificationOutcome {
-  result: ExecutionResult;
-  shouldTerminate: boolean;
-  updatedAttempts: number;
-}
-
 // ── Generation options ──
 
 export interface GenerateOptions {

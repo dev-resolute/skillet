@@ -60,6 +60,14 @@ export interface RunnerOptions {
 
 // ── Spec analysis types ──
 
+/** A candidate Operation enumerated from a spec — selection input for surfaces. */
+export interface OperationCandidate {
+  name: string;
+  method: string;
+  path: string;
+  methodClass: MethodClass;
+}
+
 export interface SpecSlice {
   operation: Record<string, unknown>;
   method: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectAuth, sliceSpec } from './spec.js';
+import { detectAuth, sliceSpec, listOperations } from './spec.js';
 
 const petstoreSpec = {
   openapi: '3.0.0',
@@ -174,5 +174,33 @@ describe('sliceSpec', () => {
   it('returns null when no match', async () => {
     const result = await sliceSpec(JSON.stringify(petstoreSpec), 'deleteEverything');
     expect(result).toBeNull();
+  });
+});
+
+describe('listOperations', () => {
+  it('enumerates every operation with name, method, path, and method class', async () => {
+    const ops = await listOperations(JSON.stringify(petstoreSpec));
+
+    expect(ops).toEqual([
+      { name: 'List all pets', method: 'GET', path: '/pets', methodClass: 'read' },
+      { name: 'Create a pet', method: 'POST', path: '/pets', methodClass: 'mutating' },
+      { name: 'Get a pet by ID', method: 'GET', path: '/pets/{id}', methodClass: 'read' },
+    ]);
+  });
+
+  it('falls back to operationId when summary is missing', async () => {
+    const spec = {
+      openapi: '3.0.0',
+      info: { title: 'X', version: '1' },
+      paths: { '/things': { get: { operationId: 'listThings', responses: { '200': { description: 'OK' } } } } },
+    };
+
+    const ops = await listOperations(JSON.stringify(spec));
+
+    expect(ops).toEqual([{ name: 'listThings', method: 'GET', path: '/things', methodClass: 'read' }]);
+  });
+
+  it('returns an empty list for an unparseable spec', async () => {
+    expect(await listOperations('not json')).toEqual([]);
   });
 });

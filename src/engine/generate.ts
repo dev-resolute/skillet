@@ -63,7 +63,7 @@ function deriveSkillName(apiDomain: string): string {
   return host.split('.')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
-async function discoverSpec(docsUrl: string): Promise<string | null> {
+export async function discoverSpec(docsUrl: string): Promise<string | null> {
   const base = docsUrl.replace(/\/?$/, '');
   const specUrls = [
     `${base}/openapi.json`, `${base}/openapi.yaml`,

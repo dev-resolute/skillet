@@ -2,7 +2,8 @@
  * detect_auth and sliceSpec — OpenAPI analysis.
  */
 import OpenAPIParser from '@readme/openapi-parser';
-import type { AuthScheme, SpecSlice } from '../types.js';
+import type { AuthScheme, SpecSlice, OperationCandidate } from '../types.js';
+import { classifyMethod } from './runner.js';
 
 export async function detectAuth(specText: string): Promise<AuthScheme> {
   let spec: Record<string, unknown>;
@@ -62,6 +63,37 @@ function getSecuritySchemes(spec: Record<string, unknown>): Record<string, unkno
 }
 
 export type { SpecSlice } from '../types.js';
+
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
+
+export async function listOperations(specText: string): Promise<OperationCandidate[]> {
+  let spec: Record<string, unknown>;
+  try {
+    spec = JSON.parse(specText);
+  } catch {
+    return [];
+  }
+
+  const paths = spec.paths as Record<string, Record<string, unknown>> | undefined;
+  if (!paths) return [];
+
+  const candidates: OperationCandidate[] = [];
+  for (const [path, methods] of Object.entries(paths)) {
+    for (const [method, operation] of Object.entries(methods)) {
+      if (!HTTP_METHODS.has(method.toLowerCase())) continue;
+      if (typeof operation !== 'object' || operation === null) continue;
+      const op = operation as Record<string, unknown>;
+      const name = (op.summary as string) || (op.operationId as string) || `${method.toUpperCase()} ${path}`;
+      candidates.push({
+        name,
+        method: method.toUpperCase(),
+        path,
+        methodClass: classifyMethod(method),
+      });
+    }
+  }
+  return candidates;
+}
 
 export async function sliceSpec(specText: string, action: string): Promise<SpecSlice | null> {
   let spec: Record<string, unknown>;

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { generateSkill } from './engine/generate.js';
+import { generateSkill, discoverSpec } from './engine/generate.js';
+import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
 
 function showHelp() {
@@ -13,6 +14,7 @@ Arguments:
   operation     One or more operations the skill covers (e.g., "list issues" "get issue")
 
 Options:
+  --list-operations  List candidate operations found in the API spec, then exit
   --name        Skill name, kebab-case (default: inferred from API domain)
   --api-base    API base URL (default: inferred from docs-url)
   --api-domain  API domain for host pinning (default: inferred from docs-url)
@@ -52,13 +54,15 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  if (positional.length < 2) {
+  const listOps = 'list-operations' in options;
+  if (positional.length < (listOps ? 1 : 2)) {
     console.error('Error: Missing required arguments: docs-url and at least one operation');
     return { help: true };
   }
 
   return {
     help: false,
+    listOps,
     docsUrl: positional[0],
     operations: positional.slice(1),
     name: options['name'],
@@ -76,7 +80,29 @@ async function main() {
     showHelp();
     process.exit(0);
   }
-  if (!('docsUrl' in args) || !args.docsUrl || !args.operations?.length) {
+  if (!('docsUrl' in args) || !args.docsUrl) {
+    showHelp();
+    process.exit(1);
+  }
+
+  if (args.listOps) {
+    const spec = await discoverSpec(args.docsUrl);
+    if (!spec) {
+      console.error(`No OpenAPI spec discovered at: ${args.docsUrl}`);
+      process.exit(1);
+    }
+    const candidates = await listOperations(spec);
+    if (candidates.length === 0) {
+      console.error('Spec found, but no operations could be enumerated.');
+      process.exit(1);
+    }
+    for (const op of candidates) {
+      console.log(`[${op.methodClass.padEnd(8)}] ${op.method.padEnd(6)} ${op.path}  —  ${op.name}`);
+    }
+    process.exit(0);
+  }
+
+  if (!args.operations?.length) {
     showHelp();
     process.exit(1);
   }

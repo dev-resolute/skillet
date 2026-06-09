@@ -1,7 +1,11 @@
 #!/usr/bin/env node
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { generateSkill, discoverSpec } from './engine/generate.js';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
+import { curate } from './curation/curate.js';
+import type { SkillResult } from './types.js';
 
 function showHelp() {
   console.log(`
@@ -23,10 +27,58 @@ Options:
   --credentials JSON object of credentials for live test (default: {})
   --help        Show this help message
 
+Curation (trusted surface — actually executes read-operation scripts):
+  skillet curate <skill-dir> [--api-name NAME] [--smoke-args JSON]
+
+  Smoke-runs every read operation's script with credentials from your
+  environment, enforces the publish bar, and emits .skillet/gallery-entry.json.
+
 Examples:
   skillet https://docs.example.com/api "list users" "get user"
   skillet https://developer.atlassian.com/cloud/jira/platform/rest/v3/ "search issues" "get issue" --name jira --api-base https://mycompany.atlassian.net/rest/api/3
+  skillet curate ./jira --smoke-args '{"search issues": ["project = FOO"]}'
 `);
+}
+
+async function curateCommand(argv: string[]) {
+  const [skillDir] = argv;
+  if (!skillDir || skillDir.startsWith('--')) {
+    showHelp();
+    process.exit(1);
+  }
+
+  let result: SkillResult;
+  try {
+    result = JSON.parse(readFileSync(join(skillDir, '.skillet', 'result.json'), 'utf8'));
+  } catch {
+    console.error(`No generation result found at ${skillDir}/.skillet/result.json — generate the skill first.`);
+    process.exit(1);
+  }
+
+  const smokeArgsJson = flagValue(argv, '--smoke-args');
+  const outcome = await curate({
+    skillDir,
+    result,
+    apiName: flagValue(argv, '--api-name'),
+    smokeArgs: smokeArgsJson ? JSON.parse(smokeArgsJson) : undefined,
+  });
+
+  for (const line of outcome.report) {
+    console.log(`  ${line}`);
+  }
+  if (!outcome.published) {
+    console.error('\n❌ Rejected: the Skill does not meet the publish bar.');
+    process.exit(1);
+  }
+
+  const entryPath = join(skillDir, '.skillet', 'gallery-entry.json');
+  writeFileSync(entryPath, JSON.stringify(outcome.entry, null, 2));
+  console.log(`\n✅ Published Gallery entry: ${entryPath}`);
+}
+
+function flagValue(argv: string[], name: string): string | undefined {
+  const index = argv.indexOf(name);
+  return index >= 0 ? argv[index + 1] : undefined;
 }
 
 function parseArgs(argv: string[]) {
@@ -75,6 +127,11 @@ function parseArgs(argv: string[]) {
 }
 
 async function main() {
+  if (process.argv[2] === 'curate') {
+    await curateCommand(process.argv.slice(3));
+    return;
+  }
+
   const args = parseArgs(process.argv);
   if (args.help) {
     showHelp();
@@ -148,7 +205,9 @@ async function main() {
     }
     process.exit(1);
   }
-  console.log(`\n💾 Written to: ${outputDir}/`);
+  mkdirSync(join(outputDir, '.skillet'), { recursive: true });
+  writeFileSync(join(outputDir, '.skillet', 'result.json'), JSON.stringify(result, null, 2));
+  console.log(`\n💾 Written to: ${outputDir}/ (verification data in .skillet/result.json)`);
 }
 
 main().catch((err) => {

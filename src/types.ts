@@ -75,6 +75,19 @@ export interface SpecSlice {
   schemas: Record<string, unknown>;
 }
 
+// ── Gallery publishing types ──
+
+/** One published Skill in the gallery, carrying verification data verbatim. */
+export interface GalleryEntry {
+  name: string;
+  apiName: string;
+  description: string;
+  operations: { name: string; methodClass: MethodClass; verification: 'passed' | 'blocked' }[];
+  files: SkillFile[];
+  promptVersion?: string;
+  generatedAt: string;
+}
+
 // ── Skill writing types ──
 
 export interface WriteResult {

@@ -6,4 +6,5 @@ export type {
   StructuredRequest,
   OperationVerification,
   AuthScheme,
+  GalleryEntry,
 } from './types.js';

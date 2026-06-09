@@ -3,6 +3,7 @@
  */
 import type { PromptTemplate } from './types.js';
 import { v1Prompt } from './v1.js';
+import { v2Prompt } from './v2.js';
 
 export interface PromptRegistry {
   register(prompt: PromptTemplate): void;
@@ -13,10 +14,10 @@ export interface PromptRegistry {
 
 export function createPromptRegistry(): PromptRegistry {
   const prompts = new Map<string, PromptTemplate>();
-  
-  // Pre-register v1 prompt
+
   prompts.set(v1Prompt.version, v1Prompt);
-  
+  prompts.set(v2Prompt.version, v2Prompt);
+
   return {
     register(prompt) {
       prompts.set(prompt.version, prompt);
@@ -29,7 +30,7 @@ export function createPromptRegistry(): PromptRegistry {
       return prompt;
     },
     getDefault() {
-      return v1Prompt;
+      return v2Prompt;
     },
     list() {
       return Array.from(prompts.values());

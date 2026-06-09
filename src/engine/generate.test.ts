@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerFauxProvider, fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
 import { generateSkill } from './generate.js';
+import { checkSkillFormat } from '../tools/format-check.js';
 
 const petstoreSpec = {
   openapi: '3.0.0',
@@ -98,12 +99,52 @@ describe('generateSkill', () => {
       text: async () => JSON.stringify({ id: 1, name: 'Fluffy' }),
     } as Response);
 
+    const petstoreSkillMd = `---
+name: petstore
+description: Petstore API via curl scripts. Use for listing, fetching, and adding pets.
+---
+
+# Petstore
+
+## Setup
+
+Get a token at https://docs.example.com, then:
+
+\`\`\`bash
+export PETSTORE_API_TOKEN="your-token"
+\`\`\`
+
+## list pets
+
+\`\`\`bash
+{baseDir}/list-pets.sh available
+\`\`\`
+
+## get pet by id
+
+\`\`\`bash
+{baseDir}/get-pet.sh 1
+\`\`\`
+
+## add pet
+
+Generated from spec, not live-verified (mutating operation).
+
+\`\`\`bash
+{baseDir}/add-pet.sh Rex
+\`\`\`
+
+## Output Format
+
+JSON from the API.
+`;
+
     faux.appendResponses([
       fauxAssistantMessage([
         fauxText('Generating the petstore skill.'),
         fauxToolCall('write_skill_files', {
           files: [
-            { path: 'SKILL.md', content: '---\nname: petstore\ndescription: Petstore API. Use for managing pets.\n---\n# Petstore' },
+            { path: 'SKILL.md', content: petstoreSkillMd },
             { path: 'list-pets.sh', content: '#!/bin/bash\ncurl -s https://api.example.com/pets' },
             { path: 'get-pet.sh', content: '#!/bin/bash\ncurl -s "https://api.example.com/pets/$1"' },
             { path: 'add-pet.sh', content: '#!/bin/bash\ncurl -s -X POST https://api.example.com/pets' },
@@ -167,7 +208,15 @@ describe('generateSkill', () => {
     expect(byOp['list pets']).toMatchObject({ status: 'passed', attempts: 1 });
     expect(byOp['get pet by id']).toMatchObject({ status: 'passed', attempts: 1 });
     expect(byOp['add pet']).toMatchObject({ status: 'blocked', attempts: 0 });
-    expect(result.promptVersion).toBeDefined();
+    expect(result.promptVersion).toBe('2.0.0');
+
+    const skillMd = result.files.find((f) => f.path === 'SKILL.md')!;
+    const format = checkSkillFormat(skillMd.content, {
+      operations: ['list pets', 'get pet by id', 'add pet'],
+      allowedEnvVars: ['PETSTORE_API_TOKEN'],
+      scriptPaths: ['list-pets.sh', 'get-pet.sh', 'add-pet.sh'],
+    });
+    expect(format.violations).toEqual([]);
   });
 
   it('derives the skill name from the API domain when none is given', async () => {
@@ -192,11 +241,33 @@ describe('generateSkill', () => {
       text: async () => '{}',
     } as Response);
 
+    const exampleSkillMd = `---
+name: example
+description: Example API search via curl. Use for searching the example service.
+---
+
+# Example
+
+## Setup
+
+No credentials required.
+
+## search
+
+\`\`\`bash
+{baseDir}/search.sh "query"
+\`\`\`
+
+## Output Format
+
+JSON results.
+`;
+
     faux.appendResponses([
       fauxAssistantMessage([
         fauxToolCall('write_skill_files', {
           files: [
-            { path: 'SKILL.md', content: '---\nname: example\n---\n' },
+            { path: 'SKILL.md', content: exampleSkillMd },
             { path: 'search.sh', content: '#!/bin/bash\ncurl -s https://api.example.com/search' },
           ],
         }),

@@ -19,7 +19,7 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
   // Pre-stage: gather deterministic data
   const docs = await fetchDocs(options.docsUrl);
   const spec = await discoverSpec(options.docsUrl);
-  const auth = JSON.stringify(spec ? await detectAuth(spec) : { type: 'unsupported', reason: 'No spec found' });
+  const auth = JSON.stringify(spec ? await detectAuth(spec, skillName) : { type: 'unsupported', reason: 'No spec found' });
   const operations = [];
   for (const name of options.operations) {
     const slice = spec ? JSON.stringify((await sliceSpec(spec, name)) ?? null, null, 2) : null;

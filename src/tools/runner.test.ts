@@ -100,7 +100,7 @@ describe('runTest', () => {
     expect(result.status).toBe(201);
   });
 
-  it('injects credentials into headers', async () => {
+  it('substitutes ${ENV_VAR} credential placeholders in headers', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -108,21 +108,80 @@ describe('runTest', () => {
       text: async () => '{}',
     } as Response);
 
-    const req = { ...baseRequest };
+    const req = { ...baseRequest, headers: { Authorization: 'Bearer ${PETSTORE_API_TOKEN}' } };
     await runTest(req, {
       apiDomain: 'api.example.com',
-      credentials: { Authorization: 'Bearer token123' },
+      credentials: { PETSTORE_API_TOKEN: 'token123' },
     });
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.example.com/v1/users',
-      expect.objectContaining({
-        headers: expect.any(Headers),
-      })
-    );
-    const call = mockFetch.mock.calls[0];
-    const headers = call[1]?.headers as Headers;
+    const headers = mockFetch.mock.calls[0][1]?.headers as Headers;
     expect(headers.get('Authorization')).toBe('Bearer token123');
+  });
+
+  it('substitutes ${base64(A:B)} for basic auth the way curl -u does', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => '{}',
+    } as Response);
+
+    const req = { ...baseRequest, headers: { Authorization: 'Basic ${base64(JIRA_EMAIL:JIRA_API_TOKEN)}' } };
+    await runTest(req, {
+      apiDomain: 'api.example.com',
+      credentials: { JIRA_EMAIL: 'me@example.com', JIRA_API_TOKEN: 'secret' },
+    });
+
+    const headers = mockFetch.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get('Authorization')).toBe(
+      `Basic ${Buffer.from('me@example.com:secret').toString('base64')}`
+    );
+  });
+
+  it('never adds headers: credentials without a placeholder are not sent', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => '{}',
+    } as Response);
+
+    await runTest(baseRequest, {
+      apiDomain: 'api.example.com',
+      credentials: { PETSTORE_API_TOKEN: 'token123' },
+    });
+
+    const headers = mockFetch.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get('Authorization')).toBeNull();
+  });
+
+  it('never overwrites a wrongly-constructed auth header (regression: injection used to mask this)', async () => {
+    const mockFetch = vi.mocked(globalThis.fetch);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'unauthorized',
+    } as Response);
+
+    const req = { ...baseRequest, headers: { Authorization: 'token-without-scheme' } };
+    const result = await runTest(req, {
+      apiDomain: 'api.example.com',
+      credentials: { PETSTORE_API_TOKEN: 'token123' },
+    });
+
+    const headers = mockFetch.mock.calls[0][1]?.headers as Headers;
+    expect(headers.get('Authorization')).toBe('token-without-scheme');
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(401);
+  });
+
+  it('fails without fetching when a placeholder has no matching credential', async () => {
+    const req = { ...baseRequest, headers: { Authorization: 'Bearer ${PETSTORE_API_TOKEN}' } };
+    const result = await runTest(req, { apiDomain: 'api.example.com', credentials: {} });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('PETSTORE_API_TOKEN');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('returns error on fetch failure', async () => {

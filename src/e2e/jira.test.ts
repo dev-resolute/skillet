@@ -23,7 +23,8 @@ describe.skipIf(!hasJiraCreds)('E2E: Jira multi-Operation skill', () => {
         apiDomain: new URL(JIRA_BASE_URL!).hostname,
         apiBaseUrl: JIRA_BASE_URL,
         credentials: {
-          Authorization: `Basic ${Buffer.from(`${JIRA_EMAIL!}:${JIRA_API_TOKEN!}`).toString('base64')}`,
+          JIRA_EMAIL: JIRA_EMAIL!,
+          JIRA_API_TOKEN: JIRA_API_TOKEN!,
         },
         maxRetries: 3,
       });

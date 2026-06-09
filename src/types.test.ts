@@ -13,7 +13,7 @@ describe('types', () => {
   });
 
   it('AuthScheme can be bearer', () => {
-    const auth: AuthScheme = { type: 'bearer', header: 'Authorization' };
+    const auth: AuthScheme = { type: 'bearer', header: 'Authorization', envVars: ['EXAMPLE_API_TOKEN'] };
     expect(auth.type).toBe('bearer');
   });
 });

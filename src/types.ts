@@ -10,11 +10,11 @@ export interface StructuredRequest {
   body?: string;
 }
 
-/** Auth scheme detected from spec/docs. */
+/** Auth scheme detected from spec/docs, with canonical credential env-var names. */
 export type AuthScheme =
-  | { type: 'bearer'; header: string }
-  | { type: 'apiKey'; header: string; keyName: string }
-  | { type: 'basic'; header: 'Authorization' }
+  | { type: 'bearer'; header: string; envVars: string[] }
+  | { type: 'apiKey'; header: string; keyName: string; envVars: string[] }
+  | { type: 'basic'; header: 'Authorization'; envVars: string[] }
   | { type: 'unsupported'; reason: string };
 
 /** A skill file to be written to disk. */

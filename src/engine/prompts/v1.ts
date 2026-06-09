@@ -36,8 +36,9 @@ ${ctx.docs.slice(0, 8000)}
 
 ## Rules
 
-1. The generated bash must read credentials from environment variables.
+1. The generated bash must read credentials ONLY from the canonical environment variables named in the auth scheme above (the "envVars" list).
 2. NEVER embed secrets in the generated files.
+2b. In run_test calls, construct auth headers YOURSELF using \${ENV_VAR} placeholders with those same canonical names — e.g. "Authorization": "Bearer \${MYAPI_API_TOKEN}", or for basic auth "Authorization": "Basic \${base64(MYAPI_EMAIL:MYAPI_API_TOKEN)}". The verifier substitutes the values; it never adds or fixes headers, so a wrong construction will fail.
 3. The curl commands must be safe (quoted variables, no eval).
 4. Use the write_skill_files tool to emit the skill files.
 5. Use the run_test tool to verify EACH operation against the live API, setting the "operation" field to the operation name exactly as listed above. Every read operation must pass before you finish.

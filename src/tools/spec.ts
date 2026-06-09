@@ -5,7 +5,7 @@ import OpenAPIParser from '@readme/openapi-parser';
 import type { AuthScheme, SpecSlice, OperationCandidate } from '../types.js';
 import { classifyMethod } from './runner.js';
 
-export async function detectAuth(specText: string): Promise<AuthScheme> {
+export async function detectAuth(specText: string, apiName: string): Promise<AuthScheme> {
   let spec: Record<string, unknown>;
   try {
     spec = JSON.parse(specText);
@@ -24,22 +24,28 @@ export async function detectAuth(specText: string): Promise<AuthScheme> {
     return { type: 'unsupported', reason: 'No security schemes found in spec' };
   }
 
+  const prefix = apiName.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+
   for (const [name, scheme] of Object.entries(schemes)) {
     const s = scheme as Record<string, unknown>;
     if (s.type === 'http') {
       const schemeValue = (s.scheme as string)?.toLowerCase();
       if (schemeValue === 'bearer') {
-        return { type: 'bearer', header: 'Authorization' };
+        return { type: 'bearer', header: 'Authorization', envVars: [`${prefix}_API_TOKEN`] };
       }
       if (schemeValue === 'basic') {
-        return { type: 'basic', header: 'Authorization' };
+        return {
+          type: 'basic',
+          header: 'Authorization',
+          envVars: [`${prefix}_EMAIL`, `${prefix}_API_TOKEN`],
+        };
       }
     }
     if (s.type === 'apiKey') {
       const location = (s.in as string) || 'header';
       const keyName = (s.name as string) || name;
       if (location === 'header') {
-        return { type: 'apiKey', header: keyName, keyName };
+        return { type: 'apiKey', header: keyName, keyName, envVars: [`${prefix}_API_KEY`] };
       }
     }
     if (s.type === 'oauth2') {

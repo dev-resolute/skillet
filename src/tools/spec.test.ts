@@ -65,8 +65,8 @@ const petstoreSpec = {
 
 describe('detectAuth', () => {
   it('detects bearer auth', async () => {
-    const result = await detectAuth(JSON.stringify(petstoreSpec));
-    expect(result).toEqual({ type: 'bearer', header: 'Authorization' });
+    const result = await detectAuth(JSON.stringify(petstoreSpec), 'petstore');
+    expect(result).toEqual({ type: 'bearer', header: 'Authorization', envVars: ['PETSTORE_API_TOKEN'] });
   });
 
   it('detects basic auth', async () => {
@@ -79,8 +79,12 @@ describe('detectAuth', () => {
         },
       },
     };
-    const result = await detectAuth(JSON.stringify(spec));
-    expect(result).toEqual({ type: 'basic', header: 'Authorization' });
+    const result = await detectAuth(JSON.stringify(spec), 'petstore');
+    expect(result).toEqual({
+      type: 'basic',
+      header: 'Authorization',
+      envVars: ['PETSTORE_EMAIL', 'PETSTORE_API_TOKEN'],
+    });
   });
 
   it('detects apiKey auth', async () => {
@@ -93,8 +97,13 @@ describe('detectAuth', () => {
         },
       },
     };
-    const result = await detectAuth(JSON.stringify(spec));
-    expect(result).toEqual({ type: 'apiKey', header: 'X-API-Key', keyName: 'X-API-Key' });
+    const result = await detectAuth(JSON.stringify(spec), 'petstore');
+    expect(result).toEqual({
+      type: 'apiKey',
+      header: 'X-API-Key',
+      keyName: 'X-API-Key',
+      envVars: ['PETSTORE_API_KEY'],
+    });
   });
 
   it('reports unsupported for oauth2', async () => {
@@ -107,7 +116,7 @@ describe('detectAuth', () => {
         },
       },
     };
-    const result = await detectAuth(JSON.stringify(spec));
+    const result = await detectAuth(JSON.stringify(spec), 'petstore');
     expect(result.type).toBe('unsupported');
     expect((result as any).reason).toContain('OAuth2');
   });
@@ -117,7 +126,7 @@ describe('detectAuth', () => {
       ...petstoreSpec,
       components: { ...petstoreSpec.components, securitySchemes: undefined },
     };
-    const result = await detectAuth(JSON.stringify(spec));
+    const result = await detectAuth(JSON.stringify(spec), 'petstore');
     expect(result.type).toBe('unsupported');
     expect((result as any).reason).toContain('No security schemes');
   });
@@ -131,8 +140,13 @@ describe('detectAuth', () => {
       },
       paths: {},
     };
-    const result = await detectAuth(JSON.stringify(swagger2));
-    expect(result).toEqual({ type: 'apiKey', header: 'api_key', keyName: 'api_key' });
+    const result = await detectAuth(JSON.stringify(swagger2), 'petstore');
+    expect(result).toEqual({
+      type: 'apiKey',
+      header: 'api_key',
+      keyName: 'api_key',
+      envVars: ['PETSTORE_API_KEY'],
+    });
   });
 });
 

@@ -42,12 +42,20 @@ export async function runTest(
     };
   }
 
-  // Inject credentials into headers
-  const headers = new Headers(request.headers);
-  if (options.credentials) {
-    for (const [key, value] of Object.entries(options.credentials)) {
-      headers.set(key, value);
-    }
+  // Substitute credential placeholders. The runner never adds or overwrites
+  // headers — an Attempt must test the exact auth construction the LLM shipped.
+  let headers: Headers;
+  try {
+    headers = new Headers(
+      Object.fromEntries(
+        Object.entries(request.headers).map(([name, value]) => [
+          name,
+          substituteCredentials(value, options.credentials ?? {}),
+        ])
+      )
+    );
+  } catch (err: any) {
+    return { ok: false, status: 0, body: '', error: err.message };
   }
 
   try {
@@ -74,6 +82,24 @@ export async function runTest(
       error: err.message || String(err),
     };
   }
+}
+
+function substituteCredentials(value: string, credentials: Record<string, string>): string {
+  return value
+    .replace(/\$\{base64\(([A-Z0-9_]+):([A-Z0-9_]+)\)\}/g, (_, a, b) => {
+      const left = lookup(a, credentials);
+      const right = lookup(b, credentials);
+      return Buffer.from(`${left}:${right}`).toString('base64');
+    })
+    .replace(/\$\{([A-Z0-9_]+)\}/g, (_, name) => lookup(name, credentials));
+}
+
+function lookup(name: string, credentials: Record<string, string>): string {
+  const value = credentials[name];
+  if (value === undefined) {
+    throw new Error(`No credential provided for placeholder \${${name}}`);
+  }
+  return value;
 }
 
 function isHostAllowed(host: string, allowedDomain: string): boolean {

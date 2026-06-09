@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerFauxProvider, fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
 import { generateSkill } from './generate.js';
-import { createPromptRegistry } from './prompts/registry.js';
 
 const petstoreSpec = {
   openapi: '3.0.0',
@@ -21,6 +20,18 @@ const petstoreSpec = {
             },
           },
         },
+      },
+      post: {
+        operationId: 'addPet',
+        summary: 'Add a new pet',
+        responses: { '201': { description: 'Created' } },
+      },
+    },
+    '/pets/{id}': {
+      get: {
+        operationId: 'getPetById',
+        summary: 'Get a pet by id',
+        responses: { '200': { description: 'OK' } },
       },
     },
   },
@@ -43,6 +54,21 @@ const petstoreSpec = {
   },
 };
 
+function mockDocsAndSpec(mockFetch: ReturnType<typeof vi.mocked<typeof fetch>>) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/html' }),
+    text: async () => '<html>Petstore docs</html>',
+  } as Response);
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'application/json' }),
+    text: async () => JSON.stringify(petstoreSpec),
+  } as Response);
+}
+
 describe('generateSkill', () => {
   let faux: ReturnType<typeof registerFauxProvider>;
 
@@ -56,90 +82,103 @@ describe('generateSkill', () => {
     faux.unregister();
   });
 
-  it('end-to-end: generates skill and verifies via run_test', async () => {
+  it('one Skill, two read + one mutating Operation: passed/passed/blocked in a single run', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
+    mockDocsAndSpec(mockFetch);
 
-    // Mock docs fetch
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: new Headers({ 'content-type': 'text/html' }),
-      text: async () => '<html>Petstore docs</html>',
-    } as Response);
-
-    // Mock spec fetch (openapi.json)
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: new Headers({ 'content-type': 'application/json' }),
-      text: async () => JSON.stringify(petstoreSpec),
-    } as Response);
-
-    // Mock run_test fetch (the live API call)
+    // run_test live calls for the two read Operations
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       text: async () => JSON.stringify([{ id: 1, name: 'Fluffy' }]),
     } as Response);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 1, name: 'Fluffy' }),
+    } as Response);
 
-    // Script the faux LLM
-    // Turn 1: write_skill_files
     faux.appendResponses([
       fauxAssistantMessage([
-        fauxText('I will generate the listPets skill.'),
+        fauxText('Generating the petstore skill.'),
         fauxToolCall('write_skill_files', {
           files: [
-            { path: 'SKILL.md', content: '---\nname: petstore\n---\n# Petstore\nList pets.' },
-            { path: 'list', content: '#!/bin/bash\ncurl -s https://api.example.com/pets' },
+            { path: 'SKILL.md', content: '---\nname: petstore\ndescription: Petstore API. Use for managing pets.\n---\n# Petstore' },
+            { path: 'list-pets.sh', content: '#!/bin/bash\ncurl -s https://api.example.com/pets' },
+            { path: 'get-pet.sh', content: '#!/bin/bash\ncurl -s "https://api.example.com/pets/$1"' },
+            { path: 'add-pet.sh', content: '#!/bin/bash\ncurl -s -X POST https://api.example.com/pets' },
           ],
         }),
       ], { stopReason: 'toolUse' }),
     ]);
-
-    // Turn 2: run_test
     faux.appendResponses([
       fauxAssistantMessage([
-        fauxText('Now let me verify the skill.'),
         fauxToolCall('run_test', {
+          operation: 'list pets',
           method: 'GET',
           url: 'https://api.example.com/pets',
-          headers: { Authorization: 'Bearer ${API_TOKEN}' },
+          headers: {},
         }),
       ], { stopReason: 'toolUse' }),
     ]);
-
-    // Turn 3: done
     faux.appendResponses([
-      fauxAssistantMessage([fauxText('The skill has been verified successfully.')]),
+      fauxAssistantMessage([
+        fauxToolCall('run_test', {
+          operation: 'get pet by id',
+          method: 'GET',
+          url: 'https://api.example.com/pets/1',
+          headers: {},
+        }),
+      ], { stopReason: 'toolUse' }),
+    ]);
+    faux.appendResponses([
+      fauxAssistantMessage([
+        fauxToolCall('run_test', {
+          operation: 'add pet',
+          method: 'POST',
+          url: 'https://api.example.com/pets',
+          headers: {},
+          body: '{"name":"Rex"}',
+        }),
+      ], { stopReason: 'toolUse' }),
+    ]);
+    faux.appendResponses([
+      fauxAssistantMessage([fauxText('Done: two operations verified, one blocked.')]),
     ]);
 
     const result = await generateSkill({
       docsUrl: 'https://docs.example.com',
-      action: 'list pets',
+      operations: ['list pets', 'get pet by id', 'add pet'],
+      skillName: 'petstore',
       apiDomain: 'api.example.com',
-      credentials: { Authorization: 'Bearer test-token' },
+      credentials: {},
       model: faux.getModel(),
     });
 
-    expect(result.files).toHaveLength(2);
-    expect(result.files[0].path).toBe('SKILL.md');
-    expect(result.verification.status).toBe('passed');
-    expect(result.verification.attempts).toBe(1);
-    expect(result.promptVersion).toBe('1.0.0');
+    expect(result.name).toBe('petstore');
+    expect(result.files.map((f) => f.path)).toEqual([
+      'SKILL.md',
+      'list-pets.sh',
+      'get-pet.sh',
+      'add-pet.sh',
+    ]);
+
+    const byOp = Object.fromEntries(result.operations.map((o) => [o.operation, o]));
+    expect(byOp['list pets']).toMatchObject({ status: 'passed', attempts: 1 });
+    expect(byOp['get pet by id']).toMatchObject({ status: 'passed', attempts: 1 });
+    expect(byOp['add pet']).toMatchObject({ status: 'blocked', attempts: 0 });
+    expect(result.promptVersion).toBeDefined();
   });
 
-  it('uses docs-only fallback when no spec is found', async () => {
+  it('derives the skill name from the API domain when none is given', async () => {
     const mockFetch = vi.mocked(globalThis.fetch);
 
-    // Mock docs fetch
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       headers: new Headers({ 'content-type': 'text/html' }),
       text: async () => '<html>API docs without spec links</html>',
     } as Response);
-
-    // All spec discovery attempts fail
     for (let i = 0; i < 6; i++) {
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -147,8 +186,6 @@ describe('generateSkill', () => {
         headers: new Headers(),
       } as Response);
     }
-
-    // Mock run_test fetch
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -157,40 +194,38 @@ describe('generateSkill', () => {
 
     faux.appendResponses([
       fauxAssistantMessage([
-        fauxText('No spec found, generating from docs.'),
         fauxToolCall('write_skill_files', {
           files: [
-            { path: 'SKILL.md', content: '---\nname: myapi\n---\n' },
-            { path: 'search', content: '#!/bin/bash\ncurl -s https://api.example.com/search' },
+            { path: 'SKILL.md', content: '---\nname: example\n---\n' },
+            { path: 'search.sh', content: '#!/bin/bash\ncurl -s https://api.example.com/search' },
           ],
         }),
       ], { stopReason: 'toolUse' }),
     ]);
-
     faux.appendResponses([
       fauxAssistantMessage([
         fauxToolCall('run_test', {
+          operation: 'search',
           method: 'GET',
           url: 'https://api.example.com/search',
           headers: {},
         }),
       ], { stopReason: 'toolUse' }),
     ]);
-
     faux.appendResponses([
       fauxAssistantMessage([fauxText('Done.')]),
     ]);
 
     const result = await generateSkill({
       docsUrl: 'https://docs.example.com',
-      action: 'search',
+      operations: ['search'],
       apiDomain: 'api.example.com',
       credentials: {},
       model: faux.getModel(),
     });
 
-    expect(result.files).toHaveLength(2);
-    expect(result.verification.status).toBe('passed');
+    expect(result.name).toBe('example');
+    expect(result.operations[0]).toMatchObject({ operation: 'search', status: 'passed' });
   });
 
   it('throws for invalid promptVersion', async () => {
@@ -204,44 +239,11 @@ describe('generateSkill', () => {
 
     await expect(generateSkill({
       docsUrl: 'https://docs.example.com',
-      action: 'test',
+      operations: ['test'],
       apiDomain: 'api.example.com',
       credentials: {},
       model: faux.getModel(),
       promptVersion: '99.0.0',
     })).rejects.toThrow('not found');
-  });
-
-  it('uses custom prompt when promptVersion is provided', async () => {
-    const mockFetch = vi.mocked(globalThis.fetch);
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: new Headers({ 'content-type': 'text/html' }),
-      text: async () => '<html>docs</html>',
-    } as Response);
-
-    // Register a custom prompt for testing
-    const registry = createPromptRegistry();
-    const customPrompt = {
-      version: 'test-v1',
-      name: 'test',
-      description: 'Test prompt',
-      build: (ctx: any) => `Test prompt for ${ctx.action}`,
-    };
-    registry.register(customPrompt);
-
-    // This test verifies the parameter exists but doesn't fully test
-    // the integration since it requires mocking the registry
-    // The important part is that the parameter is accepted
-    const result = await generateSkill({
-      docsUrl: 'https://docs.example.com',
-      action: 'search',
-      apiDomain: 'api.example.com',
-      credentials: {},
-      model: faux.getModel(),
-    });
-
-    expect(result.files).toBeDefined();
   });
 });

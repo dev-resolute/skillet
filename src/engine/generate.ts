@@ -14,15 +14,20 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
   const maxRetries = options.maxRetries ?? DEFAULT_RETRIES;
   const apiDomain = options.apiDomain ?? new URL(options.docsUrl).hostname;
   const apiBaseUrl = options.apiBaseUrl ?? `https://${apiDomain}`;
+  const skillName = options.skillName ?? deriveSkillName(apiDomain);
 
   // Pre-stage: gather deterministic data
   const docs = await fetchDocs(options.docsUrl);
   const spec = await discoverSpec(options.docsUrl);
   const auth = JSON.stringify(spec ? await detectAuth(spec) : { type: 'unsupported', reason: 'No spec found' });
-  const slice = spec ? JSON.stringify((await sliceSpec(spec, options.action)) ?? null, null, 2) : null;
+  const operations = [];
+  for (const name of options.operations) {
+    const slice = spec ? JSON.stringify((await sliceSpec(spec, name)) ?? null, null, 2) : null;
+    operations.push({ name, slice });
+  }
 
   // Create state and modules
-  const stateManager = createStateManager({ maxRetries });
+  const stateManager = createStateManager({ maxRetries, operations: options.operations });
 
   // Build agent with adapter-based tools
   const model = (options.model as any) ?? getModel('openai', 'gpt-4o-mini')!;
@@ -32,7 +37,7 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
     : promptRegistry.getDefault();
   const agent = new Agent({
     initialState: {
-      systemPrompt: prompt.build({ action: options.action, apiBaseUrl, auth, slice, docs, maxRetries }),
+      systemPrompt: prompt.build({ skillName, operations, apiBaseUrl, auth, docs, maxRetries }),
       model,
       tools: [
         createWriteSkillFilesTool(stateManager),
@@ -41,15 +46,21 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
     },
   });
 
-  await agent.prompt(`Generate a verified skill for the action: ${options.action}`);
+  await agent.prompt(
+    `Generate a verified skill covering these operations: ${options.operations.join(', ')}`
+  );
 
-  const finalState = stateManager.getState();
   return {
-    name: `api/${options.action.replace(/\s+/g, '-').toLowerCase()}`,
-    files: finalState.files,
-    verification: finalState.verification,
+    name: skillName,
+    files: stateManager.getFiles(),
+    operations: stateManager.getOperations(),
     promptVersion: prompt.version,
   };
+}
+
+function deriveSkillName(apiDomain: string): string {
+  const host = apiDomain.replace(/^(api|www)\./, '');
+  return host.split('.')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
 async function discoverSpec(docsUrl: string): Promise<string | null> {
@@ -64,5 +75,3 @@ async function discoverSpec(docsUrl: string): Promise<string | null> {
   }
   return null;
 }
-
-

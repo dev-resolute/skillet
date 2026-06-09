@@ -8,18 +8,22 @@ describe('v1Prompt', () => {
     expect(v1Prompt.description).toBe('The original skillet prompt');
   });
 
-  it('builds a prompt with all required sections', () => {
+  it('builds a prompt with all required sections and every Operation', () => {
     const result = v1Prompt.build({
-      action: 'list users',
+      skillName: 'example',
+      operations: [
+        { name: 'list users', slice: null },
+        { name: 'get user', slice: null },
+      ],
       apiBaseUrl: 'https://api.example.com',
       auth: JSON.stringify({ type: 'bearer' }),
-      slice: null,
       docs: 'Some documentation',
       maxRetries: 3,
     });
 
     expect(result).toContain('You are skillet');
     expect(result).toContain('list users');
+    expect(result).toContain('get user');
     expect(result).toContain('https://api.example.com');
     expect(result).toContain('bearer');
     expect(result).toContain('Some documentation');
@@ -28,12 +32,12 @@ describe('v1Prompt', () => {
     expect(result).toContain('Output format');
   });
 
-  it('includes spec slice when available', () => {
+  it('includes each Operation spec slice when available', () => {
     const result = v1Prompt.build({
-      action: 'get',
+      skillName: 'example',
+      operations: [{ name: 'get user', slice: '{"method": "GET", "path": "/users"}' }],
       apiBaseUrl: 'https://api.example.com',
       auth: JSON.stringify({ type: 'basic' }),
-      slice: '{"method": "GET", "path": "/users"}',
       docs: 'Docs',
       maxRetries: 2,
     });
@@ -43,12 +47,12 @@ describe('v1Prompt', () => {
     expect(result).not.toContain('No OpenAPI spec available');
   });
 
-  it('shows no spec message when slice is null', () => {
+  it('shows no spec message for Operations without a slice', () => {
     const result = v1Prompt.build({
-      action: 'create',
+      skillName: 'example',
+      operations: [{ name: 'create user', slice: null }],
       apiBaseUrl: 'https://api.example.com',
       auth: JSON.stringify({ type: 'unsupported' }),
-      slice: null,
       docs: 'Docs',
       maxRetries: 5,
     });
@@ -59,15 +63,15 @@ describe('v1Prompt', () => {
   it('truncates docs to 8000 chars', () => {
     const longDocs = 'a'.repeat(10000);
     const result = v1Prompt.build({
-      action: 'test',
+      skillName: 'example',
+      operations: [{ name: 'test', slice: null }],
       apiBaseUrl: 'https://api.example.com',
       auth: JSON.stringify({ type: 'bearer' }),
-      slice: null,
       docs: longDocs,
       maxRetries: 3,
     });
 
-    expect(result.length).toBeLessThan(10000 + 500); // prompt itself adds some overhead
+    expect(result.length).toBeLessThan(10000 + 1500); // prompt itself adds some overhead
     expect(result).toContain('a'.repeat(8000));
     expect(result).not.toContain('a'.repeat(9000));
   });

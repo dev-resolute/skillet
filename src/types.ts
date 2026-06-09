@@ -23,17 +23,18 @@ export interface SkillFile {
   content: string;
 }
 
-/** The result of generating a skill. */
+/** The result of generating a Skill covering one API surface. */
 export interface SkillResult {
   name: string;
   files: SkillFile[];
-  verification: VerificationResult;
+  operations: OperationVerification[];
   promptVersion?: string;
 }
 
-/** Result of verifying a skill against a live API. */
-export interface VerificationResult {
-  status: 'passed' | 'failed' | 'skipped';
+/** Verification outcome for one Operation within a Skill. */
+export interface OperationVerification {
+  operation: string;
+  status: 'pending' | 'passed' | 'failed' | 'blocked';
   attempts: number;
   lastRequest?: StructuredRequest;
   lastResponse?: { status: number; body: string };
@@ -78,7 +79,8 @@ export interface WriteResult {
 
 export interface GenerateOptions {
   docsUrl: string;
-  action: string;
+  operations: string[];
+  skillName?: string;
   apiBaseUrl?: string;
   apiDomain?: string;
   credentials?: Record<string, string>;

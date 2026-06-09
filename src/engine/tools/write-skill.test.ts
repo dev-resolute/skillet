@@ -9,7 +9,7 @@ function run(tool: ReturnType<typeof createWriteSkillFilesTool>, files: SkillFil
 
 describe('write_skill_files adapter', () => {
   it('records files into state and reports them, without persisting', async () => {
-    const state = createStateManager({ maxRetries: 3 });
+    const state = createStateManager({ maxRetries: 3, operations: ['search'] });
     const tool = createWriteSkillFilesTool(state);
     const files: SkillFile[] = [
       { path: 'SKILL.md', content: 'test content' },
@@ -24,7 +24,7 @@ describe('write_skill_files adapter', () => {
   });
 
   it('does not terminate before any test has run', async () => {
-    const state = createStateManager({ maxRetries: 3 });
+    const state = createStateManager({ maxRetries: 3, operations: ['search'] });
     const tool = createWriteSkillFilesTool(state);
 
     const result = await run(tool, [{ path: 'SKILL.md', content: 'x' }]);

@@ -4,6 +4,6 @@ export type {
   SkillResult,
   SkillFile,
   StructuredRequest,
-  VerificationResult,
+  OperationVerification,
   AuthScheme,
 } from './types.js';

@@ -4,25 +4,26 @@ import { createSkillWriter } from './skill-writer.js';
 
 function showHelp() {
   console.log(`
-Usage: skillet <docs-url> <action> [options]
+Usage: skillet <docs-url> <operation> [operation...] [options]
 
-Generate a verified pi skill from API docs.
+Generate a verified pi skill covering one or more operations of an API.
 
 Arguments:
   docs-url      URL to the API documentation
-  action        The action you want the skill to perform (e.g., "search issues")
+  operation     One or more operations the skill covers (e.g., "list issues" "get issue")
 
 Options:
+  --name        Skill name, kebab-case (default: inferred from API domain)
   --api-base    API base URL (default: inferred from docs-url)
   --api-domain  API domain for host pinning (default: inferred from docs-url)
-  --output      Output directory for the generated skill (default: ./<action-slug>)
-  --max-retries Maximum verification retries (default: 3)
+  --output      Output directory for the generated skill (default: ./<skill-name>)
+  --max-retries Maximum verification Attempts per operation (default: 3)
   --credentials JSON object of credentials for live test (default: {})
   --help        Show this help message
 
 Examples:
-  skillet https://docs.example.com/api "list users"
-  skillet https://developer.atlassian.com/cloud/jira/platform/rest/v3/ "search issues" --api-base https://mycompany.atlassian.net/rest/api/3
+  skillet https://docs.example.com/api "list users" "get user"
+  skillet https://developer.atlassian.com/cloud/jira/platform/rest/v3/ "search issues" "get issue" --name jira --api-base https://mycompany.atlassian.net/rest/api/3
 `);
 }
 
@@ -52,14 +53,15 @@ function parseArgs(argv: string[]) {
   }
 
   if (positional.length < 2) {
-    console.error('Error: Missing required arguments: docs-url and action');
+    console.error('Error: Missing required arguments: docs-url and at least one operation');
     return { help: true };
   }
 
   return {
     help: false,
     docsUrl: positional[0],
-    action: positional[1],
+    operations: positional.slice(1),
+    name: options['name'],
     apiBase: options['api-base'],
     apiDomain: options['api-domain'],
     output: options['output'],
@@ -74,26 +76,28 @@ async function main() {
     showHelp();
     process.exit(0);
   }
-  if (!('docsUrl' in args) || !args.docsUrl || !args.action) {
+  if (!('docsUrl' in args) || !args.docsUrl || !args.operations?.length) {
     showHelp();
     process.exit(1);
   }
 
   const docsUrl = args.docsUrl as string;
-  const action = args.action as string;
-  const outputDir = args.output ?? action.replace(/\s+/g, '-').toLowerCase();
+  const operations = args.operations as string[];
 
   console.log(`🔍 Fetching docs: ${args.docsUrl}`);
-  console.log(`🎯 Action: ${args.action}`);
+  console.log(`🎯 Operations: ${operations.join(', ')}`);
 
   const result = await generateSkill({
     docsUrl,
-    action,
+    operations,
+    skillName: args.name,
     apiBaseUrl: args.apiBase,
     apiDomain: args.apiDomain,
     credentials: args.credentials,
     maxRetries: args.maxRetries,
   });
+
+  const outputDir = args.output ?? result.name;
 
   console.log(`\n✅ Generated skill: ${result.name}`);
   console.log(`📁 Files (${result.files.length}):`);
@@ -101,13 +105,12 @@ async function main() {
     console.log(`  - ${file.path}`);
   }
 
-  console.log(`\n🔬 Verification: ${result.verification.status}`);
-  console.log(`   Attempts: ${result.verification.attempts}`);
-  if (result.verification.lastRequest) {
-    console.log(`   Last request: ${result.verification.lastRequest.method} ${result.verification.lastRequest.url}`);
-  }
-  if (result.verification.report) {
-    console.log(`   Report: ${result.verification.report}`);
+  console.log(`\n🔬 Verification:`);
+  for (const op of result.operations) {
+    console.log(`   ${op.operation}: ${op.status} (attempts: ${op.attempts})`);
+    if (op.report) {
+      console.log(`     Report: ${op.report}`);
+    }
   }
 
   const writer = createSkillWriter();

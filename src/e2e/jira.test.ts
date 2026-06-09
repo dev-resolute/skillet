@@ -12,13 +12,14 @@ const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
 const hasJiraCreds = !!(JIRA_BASE_URL && JIRA_EMAIL && JIRA_API_TOKEN);
 
-describe.skipIf(!hasJiraCreds)('E2E: Jira search', () => {
+describe.skipIf(!hasJiraCreds)('E2E: Jira multi-Operation skill', () => {
   it(
-    'generates a verified skill for searching issues',
+    'generates one Skill covering search and get',
     async () => {
       const result = await generateSkill({
         docsUrl: 'https://developer.atlassian.com/cloud/jira/platform/rest/v3/',
-        action: 'search issues',
+        operations: ['search issues', 'get issue'],
+        skillName: 'jira',
         apiDomain: new URL(JIRA_BASE_URL!).hostname,
         apiBaseUrl: JIRA_BASE_URL,
         credentials: {
@@ -27,12 +28,16 @@ describe.skipIf(!hasJiraCreds)('E2E: Jira search', () => {
         maxRetries: 3,
       });
 
+      expect(result.name).toBe('jira');
       expect(result.files.length).toBeGreaterThan(0);
-      expect(result.verification.status).toBe('passed');
-      expect(result.verification.attempts).toBeGreaterThan(0);
-      expect(result.verification.lastRequest).toBeDefined();
-      expect(result.verification.lastRequest!.method.toUpperCase()).toBe('GET');
+
+      for (const op of result.operations) {
+        expect(op.status).toBe('passed');
+        expect(op.attempts).toBeGreaterThan(0);
+        expect(op.lastRequest).toBeDefined();
+        expect(op.lastRequest!.method.toUpperCase()).toBe('GET');
+      }
     },
-    120000
+    180000
   );
 });

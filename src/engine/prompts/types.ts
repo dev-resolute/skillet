@@ -2,11 +2,16 @@
  * Prompt template types and interfaces.
  */
 
+export interface OperationContext {
+  name: string;
+  slice: string | null;
+}
+
 export interface PromptContext {
-  action: string;
+  skillName: string;
+  operations: OperationContext[];
   apiBaseUrl: string;
   auth: string;
-  slice: string | null;
   docs: string;
   maxRetries: number;
 }

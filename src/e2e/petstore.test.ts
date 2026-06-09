@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { generateSkill } from '../engine/generate.js';
 
 /**
@@ -7,14 +7,14 @@ import { generateSkill } from '../engine/generate.js';
  * Run with: npm test -- src/e2e/petstore.test.ts
  */
 
-describe('E2E: Petstore list pets', () => {
+describe('E2E: Petstore multi-Operation skill', () => {
   it(
-    'generates a verified skill for listing pets',
+    'generates one Skill with verified read Operations and a blocked mutating Operation',
     async () => {
-      // Use the real Petstore spec URL
       const result = await generateSkill({
         docsUrl: 'https://petstore.swagger.io/',
-        action: 'list pets by status',
+        operations: ['list pets by status', 'add a new pet'],
+        skillName: 'petstore',
         apiDomain: 'petstore.swagger.io',
         apiBaseUrl: 'https://petstore.swagger.io/v2',
         // Petstore GET endpoints work without auth for this operation
@@ -22,20 +22,22 @@ describe('E2E: Petstore list pets', () => {
         maxRetries: 3,
       });
 
-      // Debug: console.log('Generated files:', result.files.map((f) => f.path));
-      // console.log('Verification:', result.verification);
+      expect(result.name).toBe('petstore');
       expect(result.files.length).toBeGreaterThan(0);
-      expect(result.files.length).toBeGreaterThan(0);
-      expect(result.verification.status).toBe('passed');
-      expect(result.verification.attempts).toBeGreaterThan(0);
-      expect(result.verification.lastRequest).toBeDefined();
-      expect(result.verification.lastResponse).toBeDefined();
 
-      // The structured request should have been a GET to the petstore domain
-      const req = result.verification.lastRequest!;
-      expect(req.method.toUpperCase()).toBe('GET');
-      expect(new URL(req.url).hostname).toBe('petstore.swagger.io');
+      const byOp = Object.fromEntries(result.operations.map((o) => [o.operation, o]));
+
+      const listPets = byOp['list pets by status'];
+      expect(listPets.status).toBe('passed');
+      expect(listPets.attempts).toBeGreaterThan(0);
+      expect(listPets.lastRequest).toBeDefined();
+      expect(listPets.lastRequest!.method.toUpperCase()).toBe('GET');
+      expect(new URL(listPets.lastRequest!.url).hostname).toBe('petstore.swagger.io');
+
+      const addPet = byOp['add a new pet'];
+      expect(addPet.status).toBe('blocked');
+      expect(addPet.attempts).toBe(0);
     },
-    120000 // 2 minutes timeout for LLM generation
+    180000 // 3 minutes timeout for LLM generation
   );
 });

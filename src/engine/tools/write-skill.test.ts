@@ -31,4 +31,42 @@ describe('write_skill_files adapter', () => {
 
     expect(result.terminate).toBe(false);
   });
+
+  it('bounces a failing Script check back to the LLM without recording the files', async () => {
+    const state = createStateManager({ maxRetries: 3, operations: ['search'] });
+    const tool = createWriteSkillFilesTool(state, {
+      allowedEnvVars: ['EXAMPLE_API_TOKEN'],
+      apiBaseUrl: 'https://api.example.com',
+    });
+
+    const result = await run(tool, [
+      { path: 'SKILL.md', content: '---\nname: example\n---' },
+      { path: 'search.sh', content: '#!/bin/bash\neval "curl $1"\n' },
+    ]);
+
+    expect(result.content[0].text).toContain('SCRIPT CHECK FAILED');
+    expect(result.content[0].text).toContain('eval');
+    expect(state.getFiles()).toEqual([]);
+    expect(result.terminate).toBe(false);
+  });
+
+  it('records files when every script passes its Script check', async () => {
+    const state = createStateManager({ maxRetries: 3, operations: ['search'] });
+    const tool = createWriteSkillFilesTool(state, {
+      allowedEnvVars: ['EXAMPLE_API_TOKEN'],
+      apiBaseUrl: 'https://api.example.com',
+    });
+    const files: SkillFile[] = [
+      { path: 'SKILL.md', content: '---\nname: example\n---' },
+      {
+        path: 'search.sh',
+        content: '#!/bin/bash\ncurl -s -H "Authorization: Bearer ${EXAMPLE_API_TOKEN}" "https://api.example.com/search?q=${1}"\n',
+      },
+    ];
+
+    const result = await run(tool, files);
+
+    expect(result.content[0].text).toContain('Recorded');
+    expect(state.getFiles()).toEqual(files);
+  });
 });

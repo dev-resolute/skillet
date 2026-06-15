@@ -109,7 +109,22 @@ export async function sliceSpec(specText: string, action: string): Promise<SpecS
     return null;
   }
 
-  const dereferenced = await OpenAPIParser.dereference(spec as any);
+  let dereferenced: any;
+  const specSize = JSON.stringify(spec).length;
+  try {
+    if (specSize > 100000) {
+      console.warn(`[skillet] Spec is large (${specSize} chars); skipping dereference to avoid schema explosion.`);
+      dereferenced = spec;
+    } else {
+      dereferenced = await OpenAPIParser.dereference(spec as any);
+    }
+  } catch (err) {
+    // Dereference can fail on complex specs (e.g., Bitbucket's 928KB spec)
+    // Fall back to using the raw spec — we'll still match operations, just
+    // won't resolve $refs in schemas.
+    console.warn(`[skillet] Dereference failed; falling back to raw spec.`);
+    dereferenced = spec;
+  }
 
   // Find the operation matching the action
   const paths = dereferenced.paths as Record<string, Record<string, unknown>> | undefined;
@@ -157,6 +172,7 @@ export async function sliceSpec(specText: string, action: string): Promise<SpecS
   const responses = match.operation.responses as Record<string, unknown> | undefined;
   if (responses) {
     for (const [code, response] of Object.entries(responses)) {
+      if (code !== '200' && code !== '201') continue;
       const resp = response as Record<string, unknown>;
       if (resp.content) {
         const content = resp.content as Record<string, unknown>;
@@ -170,10 +186,13 @@ export async function sliceSpec(specText: string, action: string): Promise<SpecS
     }
   }
 
-  return {
+  const slice = {
     operation: match.operation,
     method: match.method,
     path: match.path,
     schemas,
   };
+  const sliceSize = JSON.stringify(slice, null, 2).length;
+  console.log(`[skillet] Sliced "${match.operation.summary || match.operation.operationId || action}" (${slice.method} ${slice.path}): ${sliceSize} chars`);
+  return slice;
 }

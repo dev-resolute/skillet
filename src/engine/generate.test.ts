@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { registerFauxProvider, fauxAssistantMessage, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
-import { generateSkill } from './generate.js';
+import { generateSkill, PromptTooLargeError } from './generate.js';
 import { checkSkillFormat } from '../tools/format-check.js';
 
 const petstoreSpec = {
@@ -75,11 +75,13 @@ describe('generateSkill', () => {
 
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+    vi.stubEnv('CONTEXT_DEV_API_KEY', '');
     faux = registerFauxProvider();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     faux.unregister();
   });
 
@@ -316,5 +318,94 @@ JSON results.
       model: faux.getModel(),
       promptVersion: '99.0.0',
     })).rejects.toThrow('not found');
+  });
+
+  it('throws PromptTooLargeError when prompt exceeds 80% of context window', async () => {
+    vi.stubEnv('CONTEXT_DEV_API_KEY', 'ctxt_test_key');
+    const mockFetch = vi.mocked(globalThis.fetch);
+    // Mock Context.dev scrape (first attempt) to fail
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => '{}',
+      json: async () => { throw new Error('not json'); },
+    } as Response);
+    // Mock docs to be very large (600KB) to exceed context window
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => 'A'.repeat(600000),
+    } as Response);
+    // Mock spec discovery to return 404s
+    for (let i = 0; i < 6; i++) {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+      } as Response);
+    }
+
+    // Use a model with a tiny context window so the 600KB docs exceed it
+    const tinyModel = { ...faux.getModel(), contextWindow: 1000 };
+
+    await expect(generateSkill({
+      docsUrl: 'https://docs.example.com',
+      operations: ['search'],
+      apiDomain: 'api.example.com',
+      credentials: {},
+      model: tinyModel,
+    })).rejects.toThrow(PromptTooLargeError);
+  });
+
+  it('succeeds when prompt is within context window', async () => {
+    vi.stubEnv('CONTEXT_DEV_API_KEY', 'ctxt_test_key');
+    const mockFetch = vi.mocked(globalThis.fetch);
+    // Mock Context.dev scrape to fail
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => '{}',
+      json: async () => { throw new Error('not json'); },
+    } as Response);
+    // Mock small docs
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => '<html>Small docs</html>',
+    } as Response);
+    // Mock spec discovery to return 404s
+    for (let i = 0; i < 6; i++) {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        headers: new Headers(),
+      } as Response);
+    }
+
+    // Mock LLM response
+    faux.appendResponses([
+      fauxAssistantMessage([fauxText('Done')]),
+    ]);
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const result = await generateSkill({
+        docsUrl: 'https://docs.example.com',
+        operations: ['search'],
+        apiDomain: 'api.example.com',
+        credentials: {},
+        model: faux.getModel(),
+      });
+
+      expect(result.name).toBe('example');
+      expect(result.operations[0].operation).toBe('search');
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[skillet] System prompt:'));
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

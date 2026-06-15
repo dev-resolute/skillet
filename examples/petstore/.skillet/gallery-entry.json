@@ -1,0 +1,60 @@
+{
+  "name": "petstore",
+  "apiName": "Swagger Petstore",
+  "description": "Interact with the Swagger Petstore API to manage pets and inventory. Use for retrieving pets by status, ID, managing inventory, and placing orders.",
+  "operations": [
+    {
+      "name": "find pets by status",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "find pet by id",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "get store inventory",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "add a new pet",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    },
+    {
+      "name": "place an order",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    }
+  ],
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "---\nname: petstore\ndescription: Interact with the Swagger Petstore API to manage pets and inventory. Use for retrieving pets by status, ID, managing inventory, and placing orders.\n---\n\n# Petstore\n\nInteract with the Swagger Petstore API to manage pets and inventory.\n\n## Setup\n\n1. Create an account at https://petstore.swagger.io/v2  \n2. Use the API key `special-key` for test purposes.  \n3. Add to your shell profile (`~/.profile` or `~/.zprofile` for zsh):  \n\n```bash\nexport PETSTORE_API_KEY=\"special-key\"\n```\n\n## Find Pets by Status\n\n```bash\n{baseDir}/find-pets-by-status.sh \"available\"  # Find pets that are available\n{baseDir}/find-pets-by-status.sh \"pending\"    # Find pets that are pending\n```\n\n### Options\n- Accepts multiple statuses as comma-separated values.\n\n## Find Pet by ID\n\n```bash\n{baseDir}/find-pet-by-id.sh \"1\"  # Get pet details by ID\n```\n\n### Options\n- Requires pet ID as an argument.\n\n## Get Store Inventory\n\n```bash\n{baseDir}/get-store-inventory.sh  # Retrieve store inventory\n```\n\n## Add a New Pet\n\n```bash\n{baseDir}/add-new-pet.sh '{\"id\": 0, \"name\": \"Doggie\", \"status\": \"available\"}'  # Add a new pet to the store\n```\n\n### Options\n- Requires a JSON object representing the pet to be added.\n- Generated from spec, not live-verified (mutating operation).\n\n## Place an Order\n\n```bash\n{baseDir}/place-order.sh '{\"petId\": 1, \"quantity\": 1, \"shipDate\": \"2023-10-13T00:00:00Z\", \"status\": \"placed\", \"complete\": true}'  # Place an order for a pet\n```\n\n### Options\n- Requires a JSON object representing the order to be placed.\n- Generated from spec, not live-verified (mutating operation).\n\n## Output Format\n\nThe API typically returns a JSON object with details based on the operation:\n- Pets returned have details such as `id`, `name`, and `status`.\n- Inventory returns a JSON object indicating quantities of each pet status.\n- Adding pets and placing orders return confirmation messages."
+    },
+    {
+      "path": "find-pets-by-status.sh",
+      "content": "#!/bin/bash\n\n# Check for required arguments\nif [ -z \"$1\" ]; then\n    echo \"Usage: $0 <status>\"\n    exit 1\nfi\n\nSTATUS=\"$1\"\n\nAPI_URL=\"https://petstore.swagger.io/v2/pet/findByStatus\"\n\ncurl -X GET \"${API_URL}?status=${STATUS}\" \\\n  -H \"Content-Type: application/json\"\n"
+    },
+    {
+      "path": "find-pet-by-id.sh",
+      "content": "#!/bin/bash\n\n# Check for required arguments\nif [ -z \"$1\" ]; then\n    echo \"Usage: $0 <petId>\"\n    exit 1\nfi\n\nPET_ID=\"$1\"\n\nAPI_URL=\"https://petstore.swagger.io/v2/pet/$PET_ID\"\n\ncurl -X GET \"$API_URL\" \\\n  -H \"Content-Type: application/json\"\n"
+    },
+    {
+      "path": "get-store-inventory.sh",
+      "content": "#!/bin/bash\n\nAPI_URL=\"https://petstore.swagger.io/v2/store/inventory\"\n\ncurl -X GET \"$API_URL\" \\\n  -H \"Content-Type: application/json\"\n"
+    },
+    {
+      "path": "add-new-pet.sh",
+      "content": "#!/bin/bash\n\n# Check for input\nif [ -z \"$1\" ]; then\n    echo \"Usage: $0 '<pet object in JSON>'\"\n    exit 1\nfi\n\nPET_DATA=\"$1\"\n\nAPI_URL=\"https://petstore.swagger.io/v2/pet\"\n\ncurl -X POST \"$API_URL\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \"$PET_DATA\"\n"
+    },
+    {
+      "path": "place-order.sh",
+      "content": "#!/bin/bash\n\n# Check for input\nif [ -z \"$1\" ]; then\n    echo \"Usage: $0 '<order object in JSON>'\"\n    exit 1\nfi\n\nORDER_DATA=\"$1\"\n\nAPI_URL=\"https://petstore.swagger.io/v2/store/order\"\n\ncurl -X POST \"$API_URL\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \"$ORDER_DATA\"\n"
+    }
+  ],
+  "promptVersion": "2.0.0",
+  "generatedAt": "2026-06-10T16:54:34.347Z"
+}

@@ -1,5 +1,5 @@
 {
-  "name": "skillet-core",
+  "name": "@resolutedev/skillet",
   "version": "0.1.0",
   "description": "Docs-to-pi-skill generator: turn API docs into verified curl+bash skills",
   "type": "module",
@@ -8,12 +8,20 @@
   "bin": {
     "skillet": "dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "src/",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
     "skillet": "node dist/cli.js"
   },
   "keywords": [

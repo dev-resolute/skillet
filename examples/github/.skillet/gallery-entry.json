@@ -1,0 +1,69 @@
+{
+  "name": "github",
+  "apiName": "GitHub",
+  "description": "Official GitHub API operations for repositories, issues, and pull requests. Use for interacting with GitHub repositories, issues, pull requests, and searching repositories.",
+  "operations": [
+    {
+      "name": "get repository details",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "list issues",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "list pull requests",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "search repositories",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "create issue",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    },
+    {
+      "name": "add issue comment",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    }
+  ],
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "---\nname: github\ndescription: Official GitHub API operations for repositories, issues, and pull requests. Use for interacting with GitHub repositories, issues, pull requests, and searching repositories.\n---\n\n# GitHub\n\nInteract directly with GitHub repositories, issues, pull requests, and search using the GitHub REST API v3.\n\n## Setup\n\n1. Create a GitHub account at https://github.com/join\n2. Generate a personal access token by following https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token\n3. Add to your shell profile (`~/.profile` or `~/.zprofile`):\n\n```bash\nexport GITHUB_API_TOKEN=\"your-github-token\"\n```\n\n## Get repository details\n\n```bash\n{baseDir}/get-repository-details.sh owner repo\n```\n\n- `owner`: GitHub username or org\n- `repo`: Repository name (no .git)\n\n## List issues\n\n```bash\n{baseDir}/list-issues.sh owner repo [options]\n```\n\nOptions (all optional, in key=value format):\n  milestone=... state=... assignee=... type=... creator=... mentioned=... issue_field_values=... labels=... sort=... direction=... since=... per_page=... page=...\n\n## List pull requests\n\n```bash\n{baseDir}/list-pull-requests.sh owner repo [options]\n```\n\nOptions (all optional, in key=value format):\n  state=... head=... base=... sort=... direction=... per_page=... page=...\n\n## Search repositories\n\n```bash\n{baseDir}/search-repositories.sh \"search query\" [options]\n```\n\n- Search query required (see https://docs.github.com/rest/search/search#constructing-a-search-query)\nOptions (all optional, in key=value format):\n  sort=... order=... per_page=... page=...\n\n## Create issue\n\nGenerated from spec, not live-verified (mutating operation).\n\n```bash\n{baseDir}/create-issue.sh owner repo title [body] [assignees] [milestone] [labels]\n```\n\n- `title`: Issue title (required)\n- `body`: Issue body/description\n- `assignees`: Comma-separated list (usernames)\n- `milestone`: Milestone number or string\n- `labels`: Comma-separated labels\n\n## Add issue comment\n\nGenerated from spec, not live-verified (mutating operation).\n\n```bash\n{baseDir}/add-issue-comment.sh owner repo issue_number \"comment body\"\n```\n\n- `owner`, `repo`: As above\n- `issue_number`: Numeric issue number\n- `comment body`: The comment text\n\n## Output Format\n\nAll scripts print JSON as returned by the GitHub API. For lists (issues, PRs, search), output will be an array or an object with array fields. For single-entity (details, create), output is the object for that entity."
+    },
+    {
+      "path": "get-repository-details.sh",
+      "content": "#!/bin/bash\n# Usage: get-repository-details.sh owner repo\nset -euo pipefail\n\nif [ $# -ne 2 ]; then\n  echo \"Usage: get-repository-details.sh owner repo\" >&2\n  exit 1\nfi\n\nowner=\"$1\"\nrepo=\"$2\"\n\ncurl -sSL -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  \"https://api.github.com/repos/${owner}/${repo}\"\n"
+    },
+    {
+      "path": "list-issues.sh",
+      "content": "#!/bin/bash\n# Usage: list-issues.sh owner repo [key=value ...]\nset -euo pipefail\n\nif [ $# -lt 2 ]; then\n  echo \"Usage: list-issues.sh owner repo [key=value ...]\" >&2\n  exit 1\nfi\n\nowner=\"$1\"\nrepo=\"$2\"\nshift 2\n\nquery_string=\"\"\nfor arg in \"$@\"; do\n  key=\"${arg%%=*}\"\n  val=\"${arg#*=}\"\n  # URL encode key and val\n  key_enc=$(printf '%s' \"$key\" | jq -sRr @uri)\n  val_enc=$(printf '%s' \"$val\" | jq -sRr @uri)\n  if [[ -n \"$query_string\" ]]; then query_string+=\"&\"; fi\n  query_string+=\"${key_enc}=${val_enc}\"\ndone\n\nurl=\"https://api.github.com/repos/${owner}/${repo}/issues\"\nif [[ -n \"$query_string\" ]]; then url+=\"?$query_string\"; fi\n\ncurl -sSL -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  \"$url\"\n"
+    },
+    {
+      "path": "list-pull-requests.sh",
+      "content": "#!/bin/bash\n# Usage: list-pull-requests.sh owner repo [key=value ...]\nset -euo pipefail\n\nif [ $# -lt 2 ]; then\n  echo \"Usage: list-pull-requests.sh owner repo [key=value ...]\" >&2\n  exit 1\nfi\n\nowner=\"$1\"\nrepo=\"$2\"\nshift 2\n\nquery_string=\"\"\nfor arg in \"$@\"; do\n  key=\"${arg%%=*}\"\n  val=\"${arg#*=}\"\n  # URL encode key and val\n  key_enc=$(printf '%s' \"$key\" | jq -sRr @uri)\n  val_enc=$(printf '%s' \"$val\" | jq -sRr @uri)\n  if [[ -n \"$query_string\" ]]; then query_string+=\"&\"; fi\n  query_string+=\"${key_enc}=${val_enc}\"\ndone\n\nurl=\"https://api.github.com/repos/${owner}/${repo}/pulls\"\nif [[ -n \"$query_string\" ]]; then url+=\"?$query_string\"; fi\n\ncurl -sSL -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  \"$url\"\n"
+    },
+    {
+      "path": "search-repositories.sh",
+      "content": "#!/bin/bash\n# Usage: search-repositories.sh \"search query\" [key=value ...]\nset -euo pipefail\n\nif [ $# -lt 1 ]; then\n  echo \"Usage: search-repositories.sh \\\"search query\\\" [key=value ...]\" >&2\n  exit 1\nfi\n\nq=\"$1\"\nshift 1\n\nquery_string=\"q=$(printf '%s' \"$q\" | jq -sRr @uri)\"\nfor arg in \"$@\"; do\n  key=\"${arg%%=*}\"\n  val=\"${arg#*=}\"\n  key_enc=$(printf '%s' \"$key\" | jq -sRr @uri)\n  val_enc=$(printf '%s' \"$val\" | jq -sRr @uri)\n  query_string+=\"&${key_enc}=${val_enc}\"\ndone\n\nurl=\"https://api.github.com/search/repositories?${query_string}\"\n\ncurl -sSL -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  \"$url\"\n"
+    },
+    {
+      "path": "create-issue.sh",
+      "content": "#!/bin/bash\n# Usage: create-issue.sh owner repo title [body] [assignees] [milestone] [labels]\nset -euo pipefail\n\nif [ $# -lt 3 ]; then\n  echo \"Usage: create-issue.sh owner repo title [body] [assignees] [milestone] [labels]\" >&2\n  exit 1\nfi\n\nowner=\"$1\"\nrepo=\"$2\"\ntitle=\"$3\"\nbody=\"${4:-}\"\nassignees=\"${5:-}\"\nmilestone=\"${6:-}\"\nlabels=\"${7:-}\"\n\njson=\"{\\\"title\\\":\\\"$title\\\"\"\nif [ -n \"$body\" ]; then\n  json+=\" ,\\\"body\\\":\\\"$body\\\"\"\nfi\nif [ -n \"$assignees\" ]; then\n  IFS=',' read -ra assignee_arr <<< \"$assignees\"\n  json+=\" ,\\\"assignees\\\":[\"\n  for i in \"${!assignee_arr[@]}\"; do\n    if [ \"$i\" -ne 0 ]; then json+=\",\"; fi\n    json+=\"\\\"${assignee_arr[$i]}\\\"\"\n  done\n  json+=\"]\"\nfi\nif [ -n \"$milestone\" ]; then\n  json+=\" ,\\\"milestone\\\":\\\"$milestone\\\"\"\nfi\nif [ -n \"$labels\" ]; then\n  IFS=',' read -ra label_arr <<< \"$labels\"\n  json+=\" ,\\\"labels\\\":[\"\n  for i in \"${!label_arr[@]}\"; do\n    if [ \"$i\" -ne 0 ]; then json+=\",\"; fi\n    json+=\"\\\"${label_arr[$i]}\\\"\"\n  done\n  json+=\"]\"\nfi\njson+=\"}\"\n\ncurl -sSL -X POST -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \"$json\" \\\n  \"https://api.github.com/repos/${owner}/${repo}/issues\"\n"
+    },
+    {
+      "path": "add-issue-comment.sh",
+      "content": "#!/bin/bash\n# Usage: add-issue-comment.sh owner repo issue_number \"comment body\"\nset -euo pipefail\n\nif [ $# -ne 4 ]; then\n  echo \"Usage: add-issue-comment.sh owner repo issue_number \\\"comment body\\\"\" >&2\n  exit 1\nfi\n\nowner=\"$1\"\nrepo=\"$2\"\nissue_number=\"$3\"\nbody=\"$4\"\n\njson=\"{\\\"body\\\":\\\"$body\\\"}\"\n\ncurl -sSL -X POST -H \"Authorization: Bearer ${GITHUB_API_TOKEN}\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  -H \"Content-Type: application/json\" \\\n  -d \"$json\" \\\n  \"https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}/comments\"\n"
+    }
+  ],
+  "promptVersion": "2.0.0",
+  "generatedAt": "2026-06-11T12:27:38.517Z"
+}

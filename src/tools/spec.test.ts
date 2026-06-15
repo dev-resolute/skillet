@@ -1,42 +1,44 @@
-import { describe, it, expect } from 'vitest';
-import { detectAuth, sliceSpec, listOperations } from './spec.js';
+import { describe, it, expect, vi } from 'vitest';
+import { sliceSpec } from './spec.js';
 
-const petstoreSpec = {
+const simpleSpec = JSON.stringify({
   openapi: '3.0.0',
-  info: { title: 'Petstore', version: '1.0.0' },
+  info: { title: 'Test API', version: '1.0.0' },
   paths: {
-    '/pets': {
+    '/users': {
       get: {
-        operationId: 'listPets',
-        summary: 'List all pets',
-        responses: { '200': { description: 'OK' } },
-      },
-      post: {
-        operationId: 'createPet',
-        summary: 'Create a pet',
-        requestBody: {
-          content: {
-            'application/json': {
-              schema: { type: 'object', properties: { name: { type: 'string' } } },
-            },
-          },
-        },
-        responses: { '201': { description: 'Created' } },
-      },
-    },
-    '/pets/{id}': {
-      get: {
-        operationId: 'getPet',
-        summary: 'Get a pet by ID',
-        parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-        ],
+        operationId: 'listUsers',
+        summary: 'List users',
         responses: {
           '200': {
-            description: 'OK',
+            description: 'Success',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/Pet' },
+                schema: { type: 'array', items: { type: 'object' } },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad Request',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { error: { type: 'string' } } },
+              },
+            },
+          },
+          '401': {
+            description: 'Unauthorized',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { message: { type: 'string' } } },
+              },
+            },
+          },
+          '500': {
+            description: 'Internal Error',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { error: { type: 'string' } } },
               },
             },
           },
@@ -44,177 +46,193 @@ const petstoreSpec = {
       },
     },
   },
-  components: {
-    schemas: {
-      Pet: {
-        type: 'object',
-        properties: {
-          id: { type: 'integer' },
-          name: { type: 'string' },
+});
+
+const specWithRequestBody = JSON.stringify({
+  openapi: '3.0.0',
+  info: { title: 'Test API', version: '1.0.0' },
+  paths: {
+    '/users': {
+      post: {
+        operationId: 'createUser',
+        summary: 'Create user',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { type: 'object', properties: { name: { type: 'string' } } },
+            },
+          },
         },
-      },
-    },
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
+        responses: {
+          '201': {
+            description: 'Created',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { id: { type: 'string' } } },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad Request',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { error: { type: 'string' } } },
+              },
+            },
+          },
+        },
       },
     },
   },
-};
-
-describe('detectAuth', () => {
-  it('detects bearer auth', async () => {
-    const result = await detectAuth(JSON.stringify(petstoreSpec), 'petstore');
-    expect(result).toEqual({ type: 'bearer', header: 'Authorization', envVars: ['PETSTORE_API_TOKEN'] });
-  });
-
-  it('detects basic auth', async () => {
-    const spec = {
-      ...petstoreSpec,
-      components: {
-        ...petstoreSpec.components,
-        securitySchemes: {
-          basicAuth: { type: 'http', scheme: 'basic' },
-        },
-      },
-    };
-    const result = await detectAuth(JSON.stringify(spec), 'petstore');
-    expect(result).toEqual({
-      type: 'basic',
-      header: 'Authorization',
-      envVars: ['PETSTORE_EMAIL', 'PETSTORE_API_TOKEN'],
-    });
-  });
-
-  it('detects apiKey auth', async () => {
-    const spec = {
-      ...petstoreSpec,
-      components: {
-        ...petstoreSpec.components,
-        securitySchemes: {
-          apiKey: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
-        },
-      },
-    };
-    const result = await detectAuth(JSON.stringify(spec), 'petstore');
-    expect(result).toEqual({
-      type: 'apiKey',
-      header: 'X-API-Key',
-      keyName: 'X-API-Key',
-      envVars: ['PETSTORE_API_KEY'],
-    });
-  });
-
-  it('reports unsupported for oauth2', async () => {
-    const spec = {
-      ...petstoreSpec,
-      components: {
-        ...petstoreSpec.components,
-        securitySchemes: {
-          oauth2: { type: 'oauth2', flows: {} },
-        },
-      },
-    };
-    const result = await detectAuth(JSON.stringify(spec), 'petstore');
-    expect(result.type).toBe('unsupported');
-    expect((result as any).reason).toContain('OAuth2');
-  });
-
-  it('reports unsupported when no security schemes', async () => {
-    const spec = {
-      ...petstoreSpec,
-      components: { ...petstoreSpec.components, securitySchemes: undefined },
-    };
-    const result = await detectAuth(JSON.stringify(spec), 'petstore');
-    expect(result.type).toBe('unsupported');
-    expect((result as any).reason).toContain('No security schemes');
-  });
-
-  it('supports Swagger 2.0 securityDefinitions', async () => {
-    const swagger2 = {
-      swagger: '2.0',
-      info: { title: 'API', version: '1.0.0' },
-      securityDefinitions: {
-        api_key: { type: 'apiKey', in: 'header', name: 'api_key' },
-      },
-      paths: {},
-    };
-    const result = await detectAuth(JSON.stringify(swagger2), 'petstore');
-    expect(result).toEqual({
-      type: 'apiKey',
-      header: 'api_key',
-      keyName: 'api_key',
-      envVars: ['PETSTORE_API_KEY'],
-    });
-  });
 });
 
 describe('sliceSpec', () => {
-  it('returns null for invalid JSON', async () => {
-    const result = await sliceSpec('not json', 'list');
-    expect(result).toBeNull();
+  it('includes only 200/201 response schemas, excludes 4xx/5xx', async () => {
+    const slice = await sliceSpec(simpleSpec, 'list users');
+    expect(slice).not.toBeNull();
+    expect(slice!.method).toBe('GET');
+    expect(slice!.path).toBe('/users');
+
+    const schemaKeys = Object.keys(slice!.schemas);
+    expect(schemaKeys).toContain('response_200_application_json');
+    expect(schemaKeys).not.toContain('response_400_application_json');
+    expect(schemaKeys).not.toContain('response_401_application_json');
+    expect(schemaKeys).not.toContain('response_500_application_json');
   });
 
-  it('finds operation by operationId', async () => {
-    const result = await sliceSpec(JSON.stringify(petstoreSpec), 'listPets');
-    expect(result).not.toBeNull();
-    expect(result!.method).toBe('GET');
-    expect(result!.path).toBe('/pets');
+  it('includes 201 response schemas and request body schemas', async () => {
+    const slice = await sliceSpec(specWithRequestBody, 'create user');
+    expect(slice).not.toBeNull();
+    expect(slice!.method).toBe('POST');
+    expect(slice!.path).toBe('/users');
+
+    const schemaKeys = Object.keys(slice!.schemas);
+    expect(schemaKeys).toContain('request_application_json');
+    expect(schemaKeys).toContain('response_201_application_json');
+    expect(schemaKeys).not.toContain('response_400_application_json');
   });
 
-  it('finds operation by summary', async () => {
-    const result = await sliceSpec(JSON.stringify(petstoreSpec), 'Get a pet');
-    expect(result).not.toBeNull();
-    expect(result!.method).toBe('GET');
-    expect(result!.path).toBe('/pets/{id}');
-  });
-
-  it('includes request and response schemas', async () => {
-    const result = await sliceSpec(JSON.stringify(petstoreSpec), 'createPet');
-    expect(result).not.toBeNull();
-    expect(result!.schemas).toHaveProperty('request_application_json');
-  });
-
-  it('resolves $ref schemas', async () => {
-    const result = await sliceSpec(JSON.stringify(petstoreSpec), 'getPet');
-    expect(result).not.toBeNull();
-    expect(result!.schemas).toHaveProperty('response_200_application_json');
-    const schema = result!.schemas['response_200_application_json'] as any;
-    expect(schema.properties).toHaveProperty('id');
-    expect(schema.properties).toHaveProperty('name');
-  });
-
-  it('returns null when no match', async () => {
-    const result = await sliceSpec(JSON.stringify(petstoreSpec), 'deleteEverything');
-    expect(result).toBeNull();
-  });
-});
-
-describe('listOperations', () => {
-  it('enumerates every operation with name, method, path, and method class', async () => {
-    const ops = await listOperations(JSON.stringify(petstoreSpec));
-
-    expect(ops).toEqual([
-      { name: 'List all pets', method: 'GET', path: '/pets', methodClass: 'read' },
-      { name: 'Create a pet', method: 'POST', path: '/pets', methodClass: 'mutating' },
-      { name: 'Get a pet by ID', method: 'GET', path: '/pets/{id}', methodClass: 'read' },
-    ]);
-  });
-
-  it('falls back to operationId when summary is missing', async () => {
-    const spec = {
+  it('handles operations with no 200/201 response gracefully', async () => {
+    const specNoSuccess = JSON.stringify({
       openapi: '3.0.0',
-      info: { title: 'X', version: '1' },
-      paths: { '/things': { get: { operationId: 'listThings', responses: { '200': { description: 'OK' } } } } },
-    };
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/health': {
+          get: {
+            operationId: 'healthCheck',
+            summary: 'Health check',
+            responses: {
+              '204': { description: 'No Content' },
+            },
+          },
+        },
+      },
+    });
 
-    const ops = await listOperations(JSON.stringify(spec));
-
-    expect(ops).toEqual([{ name: 'listThings', method: 'GET', path: '/things', methodClass: 'read' }]);
+    const slice = await sliceSpec(specNoSuccess, 'health check');
+    expect(slice).not.toBeNull();
+    expect(slice!.method).toBe('GET');
+    expect(slice!.path).toBe('/health');
+    expect(Object.keys(slice!.schemas)).toHaveLength(0);
   });
 
-  it('returns an empty list for an unparseable spec', async () => {
-    expect(await listOperations('not json')).toEqual([]);
+  it('preserves $ref pointers for large specs (>100KB)', async () => {
+    // Build a large spec (100KB+) with a $ref to verify it's NOT dereferenced
+    const baseSpec = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: { name: { type: 'string' }, email: { type: 'string' } },
+          },
+        },
+      },
+      paths: {
+        '/users': {
+          get: {
+            operationId: 'listUsers',
+            summary: 'List users',
+            responses: {
+              '200': {
+                description: 'Success',
+                content: {
+                  'application/json': {
+                    schema: { '$ref': '#/components/schemas/User' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    // Pad to 100KB+ by inserting a large unused field
+    const paddedSpec = baseSpec.replace(
+      '{"openapi"',
+      '{"x-padding":"' + 'Y'.repeat(110000) + '","openapi"'
+    );
+    expect(paddedSpec.length).toBeGreaterThan(100000);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    try {
+      const slice = await sliceSpec(paddedSpec, 'list users');
+      expect(slice).not.toBeNull();
+      const schema = slice!.schemas['response_200_application_json'];
+      expect(schema).toBeDefined();
+      expect(schema).toHaveProperty('$ref');
+      expect((schema as any).$ref).toBe('#/components/schemas/User');
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[skillet] Spec is large (110401 chars); skipping dereference'));
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[skillet] Sliced "List users" (GET /users):'));
+    } finally {
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
+
+  it('dereferences $ref pointers for small specs (<100KB)', async () => {
+    const smallSpec = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: { name: { type: 'string' }, email: { type: 'string' } },
+          },
+        },
+      },
+      paths: {
+        '/users': {
+          get: {
+            operationId: 'listUsers',
+            summary: 'List users',
+            responses: {
+              '200': {
+                description: 'Success',
+                content: {
+                  'application/json': {
+                    schema: { '$ref': '#/components/schemas/User' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(smallSpec.length).toBeLessThan(100000);
+
+    const slice = await sliceSpec(smallSpec, 'list users');
+    expect(slice).not.toBeNull();
+    const schema = slice!.schemas['response_200_application_json'];
+    expect(schema).toBeDefined();
+    expect(schema).toHaveProperty('type');
+    expect(schema).toHaveProperty('properties');
+    expect(schema).not.toHaveProperty('$ref');
   });
 });

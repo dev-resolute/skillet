@@ -1,6 +1,16 @@
-# skillet
+# @resolutedev/skillet
 
 Turn an API's docs + OpenAPI spec into a verified pi skill (curl + bash + `SKILL.md`).
+
+## Installation
+
+```bash
+# CLI (run without installing)
+npx @resolutedev/skillet https://petstore.swagger.io/ "list pets by status" --api-base https://petstore.swagger.io/v2
+
+# Library
+npm install @resolutedev/skillet
+```
 
 ## What it does
 
@@ -17,10 +27,10 @@ Point `skillet` at an API's docs page, name the action you want, and it produces
 
 ```bash
 # CLI (self-hosted, bring your own LLM key)
-npx skillet https://petstore.swagger.io/ "list pets by status" --api-base https://petstore.swagger.io/v2
+npx @resolutedev/skillet https://petstore.swagger.io/ "list pets by status" --api-base https://petstore.swagger.io/v2
 
 # Library
-import { generateSkill } from 'skillet-core';
+import { generateSkill } from '@resolutedev/skillet';
 
 const result = await generateSkill({
   docsUrl: 'https://petstore.swagger.io/',
@@ -66,6 +76,32 @@ npm test
 # E2E tests (real LLM + live API)
 npx vitest run --config vitest.e2e.config.ts
 ```
+
+## Examples
+
+Generated example skills live in `examples/`:
+
+- `examples/petstore/` — skills against the public Petstore API
+- `examples/github/` — skills against the GitHub REST API
+- `examples/slack/` — skills against the Slack Web API
+
+These are committed to the repo for reference but are not included in the npm package.
+
+## Releasing
+
+Maintainers can publish a new release by pushing a git tag:
+
+```bash
+npm version patch   # or minor / major
+git push --follow-tags
+```
+
+GitHub Actions will then run tests, run the Petstore E2E test, publish to npm as `@resolutedev/skillet`, and create a GitHub Release with auto-generated notes.
+
+Required repository secrets:
+
+- `NPM_TOKEN` — npm automation token with publish access to `@resolutedev`
+- `OPENAI_API_KEY` — used by the Petstore E2E test
 
 ## Requirements
 

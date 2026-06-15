@@ -1,0 +1,69 @@
+{
+  "name": "slack",
+  "apiName": "Slack",
+  "description": "Access Slack workspace info, messages, users, and post or react to messages via Slack Web API. Use for retrieving Slack channels, history, users, or automating workspace messaging and reactions.",
+  "operations": [
+    {
+      "name": "list conversations",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "get conversation history",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "list users",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "get user info",
+      "methodClass": "read",
+      "verification": "passed"
+    },
+    {
+      "name": "post message",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    },
+    {
+      "name": "add reaction",
+      "methodClass": "mutating",
+      "verification": "blocked"
+    }
+  ],
+  "files": [
+    {
+      "path": "SKILL.md",
+      "content": "---\nname: slack\ndescription: Access Slack workspace info, messages, users, and post or react to messages via Slack Web API. Use for retrieving Slack channels, history, users, or automating workspace messaging and reactions.\n---\n\n# Slack\n\nInteract with Slack: list channels/users, inspect conversations, send messages, and add reactions.\n\n## Setup\n\n1. Create a Slack app and generate an OAuth access token: https://api.slack.com/authentication/basics (see \"OAuth Tokens & Redirect URLs\").\n2. Add to your shell profile (`~/.profile` or `~/.zprofile`):\n\n```bash\nexport SLACK_API_TOKEN=\"your-slack-oauth-token\"\n```\n\n## list conversations\n\n```bash\n{baseDir}/list-conversations.sh [--exclude-archived true|false] [--types public_channel,private_channel,mpim,im] [--limit N] [--cursor CURSOR]\n```\n\nList all Slack conversations (channels, groups, DMs).\n\n- `--exclude-archived`: Optional, true/false\n- `--types`: Comma-separated list from `public_channel,private_channel,mpim,im`\n- `--limit`: Optional, max 1000\n- `--cursor`: For pagination\n\n## get conversation history\n\n```bash\n{baseDir}/get-conversation-history.sh \"CHANNEL_ID\" [--latest TS] [--oldest TS] [--inclusive true|false] [--limit N] [--cursor CURSOR]\n```\n\nFetch messages/events for a conversation.\n\n- `CHANNEL_ID`: Required Slack channel ID\n- `--latest`, `--oldest`: Limit time range by message ts\n- `--inclusive`: Include boundary timestamps\n- `--limit`: Max results\n- `--cursor`: For pagination\n\n## list users\n\n```bash\n{baseDir}/list-users.sh [--limit N] [--cursor CURSOR] [--include-locale true|false]\n```\n\nList all users in the workspace.\n\n- `--limit`: Optional\n- `--cursor`: For pagination\n- `--include-locale`: true/false\n\n## get user info\n\n```bash\n{baseDir}/get-user-info.sh \"USER_ID\" [--include-locale true|false]\n```\n\nGet information for a specific user.\n\n- `USER_ID`: Required Slack user ID\n- `--include-locale`: Optional, true/false\n\n## post message\n\nGenerated from spec, not live-verified (mutating operation).\n\n```bash\n{baseDir}/post-message.sh \"CHANNEL\" \"TEXT\" [options]\n```\n\nSend a message to a channel or DM. Required: `CHANNEL` and `TEXT`.\n\n- Options (as `--option value`):\n  - `--as-user true|false`, `--attachments JSON`, `--blocks JSON`, `--icon-emoji \":emoji:\"`, `--icon-url URL`, `--link-names true|false`, `--mrkdwn true|false`, `--parse FORMAT`, `--reply-broadcast true|false`, `--thread-ts TS`, `--unfurl-links true|false`, `--unfurl-media true|false`, `--username NAME`\n\n## add reaction\n\nGenerated from spec, not live-verified (mutating operation).\n\n```bash\n{baseDir}/add-reaction.sh \"CHANNEL\" \"NAME\" \"TIMESTAMP\"\n```\n\nAdd a reaction (emoji) to a message in a channel.\n\n- `CHANNEL`: Channel ID\n- `NAME`: Emoji name (without colons)\n- `TIMESTAMP`: Message timestamp\n\n## Output Format\n\nAll scripts return the Slack API JSON response as-is. Common fields:\n- On success: `ok: true`, result object(s), e.g., `channels`, `members`, `messages`.\n- On error: `ok: false`, `error` field with cause.\n"
+    },
+    {
+      "path": "list-conversations.sh",
+      "content": "#!/bin/bash\n# List conversations (channels, groups, DMs)\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/conversations.list\"\n\n# Defaults\nEXCLUDE_ARCHIVED=\"\"\nTYPES=\"\"\nLIMIT=\"\"\nCURSOR=\"\"\n\n# Parse args\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    --exclude-archived)\n      EXCLUDE_ARCHIVED=\"$2\"; shift 2 ;;\n    --types)\n      TYPES=\"$2\"; shift 2 ;;\n    --limit)\n      LIMIT=\"$2\"; shift 2 ;;\n    --cursor)\n      CURSOR=\"$2\"; shift 2 ;;\n    *)\n      echo \"Usage: $0 [--exclude-archived true|false] [--types types] [--limit N] [--cursor CURSOR]\" >&2; exit 1 ;;\n  esac\ndone\n\nPARAMS=()\n[[ -n \"$EXCLUDE_ARCHIVED\" ]] && PARAMS+=(\"exclude_archived=$EXCLUDE_ARCHIVED\")\n[[ -n \"$TYPES\" ]] && PARAMS+=(\"types=$TYPES\")\n[[ -n \"$LIMIT\" ]] && PARAMS+=(\"limit=$LIMIT\")\n[[ -n \"$CURSOR\" ]] && PARAMS+=(\"cursor=$CURSOR\")\n\nif [ ${#PARAMS[@]} -gt 0 ]; then\n  QUERY_STRING=\"?$(IFS='&'; echo \"${PARAMS[*]}\")\"\nelse\n  QUERY_STRING=\"\"\nfi\n\ncurl -sSL -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \"${API_URL}${QUERY_STRING}\"\n"
+    },
+    {
+      "path": "get-conversation-history.sh",
+      "content": "#!/bin/bash\n# Get conversation history (messages/everything in a channel)\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/conversations.history\"\n\nif [[ $# -lt 1 ]]; then\n  echo \"Usage: $0 CHANNEL_ID [--latest TS] [--oldest TS] [--inclusive true|false] [--limit N] [--cursor CURSOR]\" >&2\n  exit 1\nfi\nCHANNEL=\"$1\"; shift\n\nLATEST=\"\"; OLDEST=\"\"; INCLUSIVE=\"\"; LIMIT=\"\"; CURSOR=\"\"\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    --latest)\n      LATEST=\"$2\"; shift 2 ;;\n    --oldest)\n      OLDEST=\"$2\"; shift 2 ;;\n    --inclusive)\n      INCLUSIVE=\"$2\"; shift 2 ;;\n    --limit)\n      LIMIT=\"$2\"; shift 2 ;;\n    --cursor)\n      CURSOR=\"$2\"; shift 2 ;;\n    *)\n      echo \"Usage: $0 CHANNEL_ID [--latest TS] [--oldest TS] [--inclusive true|false] [--limit N] [--cursor CURSOR]\" >&2\n      exit 1 ;;\n  esac\ndone\n\nPARAMS=(\"channel=$CHANNEL\")\n[[ -n \"$LATEST\" ]] && PARAMS+=(\"latest=$LATEST\")\n[[ -n \"$OLDEST\" ]] && PARAMS+=(\"oldest=$OLDEST\")\n[[ -n \"$INCLUSIVE\" ]] && PARAMS+=(\"inclusive=$INCLUSIVE\")\n[[ -n \"$LIMIT\" ]] && PARAMS+=(\"limit=$LIMIT\")\n[[ -n \"$CURSOR\" ]] && PARAMS+=(\"cursor=$CURSOR\")\n\nif [ ${#PARAMS[@]} -gt 0 ]; then\n  QUERY_STRING=\"?$(IFS='&'; echo \"${PARAMS[*]}\")\"\nelse\n  QUERY_STRING=\"\"\nfi\n\ncurl -sSL -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \"${API_URL}${QUERY_STRING}\"\n"
+    },
+    {
+      "path": "list-users.sh",
+      "content": "#!/bin/bash\n# List users in workspace\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/users.list\"\n\nLIMIT=\"\"\nCURSOR=\"\"\nINCLUDE_LOCALE=\"\"\n\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    --limit)\n      LIMIT=\"$2\"; shift 2 ;;\n    --cursor)\n      CURSOR=\"$2\"; shift 2 ;;\n    --include-locale)\n      INCLUDE_LOCALE=\"$2\"; shift 2 ;;\n    *)\n      echo \"Usage: $0 [--limit N] [--cursor CURSOR] [--include-locale true|false]\" >&2; exit 1 ;;\n  esac\ndone\n\nPARAMS=()\n[[ -n \"$LIMIT\" ]] && PARAMS+=(\"limit=$LIMIT\")\n[[ -n \"$CURSOR\" ]] && PARAMS+=(\"cursor=$CURSOR\")\n[[ -n \"$INCLUDE_LOCALE\" ]] && PARAMS+=(\"include_locale=$INCLUDE_LOCALE\")\n\nif [ ${#PARAMS[@]} -gt 0 ]; then\n  QUERY_STRING=\"?$(IFS='&'; echo \"${PARAMS[*]}\")\"\nelse\n  QUERY_STRING=\"\"\nfi\n\ncurl -sSL -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \"${API_URL}${QUERY_STRING}\"\n"
+    },
+    {
+      "path": "get-user-info.sh",
+      "content": "#!/bin/bash\n# Get user info\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/users.info\"\n\nif [[ $# -lt 1 ]]; then\n  echo \"Usage: $0 USER_ID [--include-locale true|false]\" >&2\n  exit 1\nfi\nUSER_ID=\"$1\"; shift\nINCLUDE_LOCALE=\"\"\n\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    --include-locale)\n      INCLUDE_LOCALE=\"$2\"; shift 2 ;;\n    *)\n      echo \"Usage: $0 USER_ID [--include-locale true|false]\" >&2; exit 1 ;;\n  esac\ndone\n\nPARAMS=(\"user=$USER_ID\")\n[[ -n \"$INCLUDE_LOCALE\" ]] && PARAMS+=(\"include_locale=$INCLUDE_LOCALE\")\n\nif [ ${#PARAMS[@]} -gt 0 ]; then\n  QUERY_STRING=\"?$(IFS='&'; echo \"${PARAMS[*]}\")\"\nelse\n  QUERY_STRING=\"\"\nfi\n\ncurl -sSL -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \"${API_URL}${QUERY_STRING}\"\n"
+    },
+    {
+      "path": "post-message.sh",
+      "content": "#!/bin/bash\n# Send a message to a Slack channel\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/chat.postMessage\"\n\nif [[ $# -lt 2 ]]; then\n  echo \"Usage: $0 CHANNEL TEXT [--as-user true|false] [--attachments JSON] [--blocks JSON] [--icon-emoji ':emoji:'] [--icon-url URL] [--link-names true|false] [--mrkdwn true|false] [--parse STR] [--reply-broadcast true|false] [--thread-ts TS] [--unfurl-links true|false] [--unfurl-media true|false] [--username NAME]\" >&2\n  exit 1\nfi\nCHANNEL=\"$1\"; shift\nTEXT=\"$1\"; shift\n\n# Optionals\ndeclare -A ARGS\nKEYS=(as-user attachments blocks icon-emoji icon-url link-names mrkdwn parse reply-broadcast thread-ts unfurl-links unfurl-media username)\nwhile [[ $# -gt 0 ]]; do\n  case \"$1\" in\n    --as-user) ARGS[as_user]=\"$2\"; shift 2 ;;\n    --attachments) ARGS[attachments]=\"$2\"; shift 2 ;;\n    --blocks) ARGS[blocks]=\"$2\"; shift 2 ;;\n    --icon-emoji) ARGS[icon_emoji]=\"$2\"; shift 2 ;;\n    --icon-url) ARGS[icon_url]=\"$2\"; shift 2 ;;\n    --link-names) ARGS[link_names]=\"$2\"; shift 2 ;;\n    --mrkdwn) ARGS[mrkdwn]=\"$2\"; shift 2 ;;\n    --parse) ARGS[parse]=\"$2\"; shift 2 ;;\n    --reply-broadcast) ARGS[reply_broadcast]=\"$2\"; shift 2 ;;\n    --thread-ts) ARGS[thread_ts]=\"$2\"; shift 2 ;;\n    --unfurl-links) ARGS[unfurl_links]=\"$2\"; shift 2 ;;\n    --unfurl-media) ARGS[unfurl_media]=\"$2\"; shift 2 ;;\n    --username) ARGS[username]=\"$2\"; shift 2 ;;\n    *)\n      echo \"Usage: $0 CHANNEL TEXT [--as-user true|false] ...\" >&2; exit 1 ;;\n  esac\ndone\n\nDATA=(--data-urlencode \"channel=$CHANNEL\" --data-urlencode \"text=$TEXT\")\nfor k in \"${!ARGS[@]}\"; do\n  DATA+=(--data-urlencode \"$k=${ARGS[$k]}\")\ndone\n\ncurl -sSL -X POST -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \\\n  \"${API_URL}\" \\\n  \"${DATA[@]}\"\n"
+    },
+    {
+      "path": "add-reaction.sh",
+      "content": "#!/bin/bash\n# Add a reaction to a message\n\nset -euo pipefail\n\nAPI_URL=\"https://slack.com/api/reactions.add\"\n\nif [[ $# -lt 3 ]]; then\n  echo \"Usage: $0 CHANNEL NAME TIMESTAMP\" >&2\n  exit 1\nfi\nCHANNEL=\"$1\"; NAME=\"$2\"; TIMESTAMP=\"$3\"\n\ncurl -sSL -X POST -H \"Authorization: Bearer ${SLACK_API_TOKEN}\" \\\n  --data-urlencode \"channel=$CHANNEL\" \\\n  --data-urlencode \"name=$NAME\" \\\n  --data-urlencode \"timestamp=$TIMESTAMP\" \\\n  \"${API_URL}\"\n"
+    }
+  ],
+  "promptVersion": "2.0.0",
+  "generatedAt": "2026-06-10T17:50:44.184Z"
+}

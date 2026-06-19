@@ -8,3 +8,4 @@ coverage/
 docs
 CONTEXT.md
 output
+.env.local

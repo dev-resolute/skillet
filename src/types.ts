@@ -100,6 +100,7 @@ export interface WriteResult {
 
 export interface GenerateOptions {
   docsUrl: string;
+  specUrl?: string;
   operations: string[];
   skillName?: string;
   apiBaseUrl?: string;

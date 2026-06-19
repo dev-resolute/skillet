@@ -21,6 +21,7 @@ Options:
   --list-operations  List candidate operations found in the API spec, then exit
   --name        Skill name, kebab-case (default: inferred from API domain)
   --api-base    API base URL (default: inferred from docs-url)
+  --spec        OpenAPI spec URL (default: discovered from docs-url)
   --api-domain  API domain for host pinning (default: inferred from docs-url)
   --output      Output directory for the generated skill (default: ./<skill-name>)
   --max-retries Maximum verification Attempts per operation (default: 3)
@@ -137,6 +138,7 @@ function parseArgs(argv: string[]) {
     docsUrl: positional[0],
     operations: positional.slice(1),
     name: options['name'],
+    specUrl: options['spec'],
     apiBase: options['api-base'],
     apiDomain: options['api-domain'],
     output: options['output'],
@@ -191,6 +193,7 @@ async function main() {
 
   const result = await generateSkill({
     docsUrl,
+    specUrl: args.specUrl,
     operations,
     skillName: args.name,
     apiBaseUrl: args.apiBase,

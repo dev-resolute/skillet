@@ -64,7 +64,9 @@ export async function generateSkill(options: GenerateOptions): Promise<SkillResu
 
   // Pre-stage: gather deterministic data
   const docs = await fetchDocs(options.docsUrl);
-  const spec = await discoverSpec(options.docsUrl);
+  const spec = options.specUrl
+    ? await fetchSpec(options.specUrl)
+    : await discoverSpec(options.docsUrl);
   const authScheme = spec
     ? await detectAuth(spec, skillName)
     : ({ type: 'unsupported', reason: 'No spec found' } as const);

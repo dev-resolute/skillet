@@ -4,7 +4,7 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SkillResult, GalleryEntry, MethodClass } from '../types.js';
+import type { SkillResult, GalleryEntry, MethodClass, SkillFile } from '../types.js';
 import { classifyMethod } from '../tools/runner.js';
 import { smokeRun } from './smoke-run.js';
 
@@ -83,6 +83,24 @@ export async function curate(options: CurateOptions): Promise<CurateOutcome> {
   };
 
   return { published: true, entry, report };
+}
+
+/**
+ * Maps a published Gallery entry into the Curated skills repo layout: every file
+ * under `<name>/`, plus the entry itself at `<name>/.skillet/gallery-entry.json`
+ * so the gallery build can glob it without re-deriving metadata.
+ */
+export function toSkillsRepoLayout(entry: GalleryEntry): SkillFile[] {
+  return [
+    ...entry.files.map((file) => ({
+      path: `${entry.name}/${file.path}`,
+      content: file.content,
+    })),
+    {
+      path: `${entry.name}/.skillet/gallery-entry.json`,
+      content: JSON.stringify(entry, null, 2),
+    },
+  ];
 }
 
 function methodClassOf(status: string, method: string | undefined): MethodClass {

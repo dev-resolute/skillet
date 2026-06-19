@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { generateSkill, discoverSpec } from './engine/generate.js';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
-import { curate } from './curation/curate.js';
+import { curate, toSkillsRepoLayout } from './curation/curate.js';
 import type { SkillResult } from './types.js';
 
 function showHelp() {
@@ -28,10 +28,12 @@ Options:
   --help        Show this help message
 
 Curation (trusted surface — actually executes read-operation scripts):
-  skillet curate <skill-dir> [--api-name NAME] [--smoke-args JSON]
+  skillet curate <skill-dir> [--api-name NAME] [--smoke-args JSON] [--out DIR]
 
   Smoke-runs every read operation's script with credentials from your
   environment, enforces the publish bar, and emits .skillet/gallery-entry.json.
+  With --out, also writes the full published skill into DIR/<name>/ (ready to
+  commit into the skillet-skills repo).
 
 Examples:
   skillet https://docs.example.com/api "list users" "get user"
@@ -71,9 +73,26 @@ async function curateCommand(argv: string[]) {
     process.exit(1);
   }
 
+  const entry = outcome.entry;
+  if (!entry) {
+    console.error('\n❌ Published but produced no Gallery entry.');
+    process.exit(1);
+  }
+
   const entryPath = join(skillDir, '.skillet', 'gallery-entry.json');
-  writeFileSync(entryPath, JSON.stringify(outcome.entry, null, 2));
+  writeFileSync(entryPath, JSON.stringify(entry, null, 2));
   console.log(`\n✅ Published Gallery entry: ${entryPath}`);
+
+  const out = flagValue(argv, '--out');
+  if (out) {
+    const writer = createSkillWriter();
+    const writeResult = await writer.write(toSkillsRepoLayout(entry), out);
+    if (!writeResult.success) {
+      console.error(`\n❌ Failed to write to skills repo: ${writeResult.errors.join('; ')}`);
+      process.exit(1);
+    }
+    console.log(`✅ Wrote ${writeResult.filesWritten} files to ${join(out, entry.name)}`);
+  }
 }
 
 function flagValue(argv: string[], name: string): string | undefined {

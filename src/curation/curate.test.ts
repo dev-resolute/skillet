@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { curate } from './curate.js';
-import type { SkillResult } from '../types.js';
+import { curate, toSkillsRepoLayout } from './curate.js';
+import type { SkillResult, GalleryEntry } from '../types.js';
 
 let dir: string;
 
@@ -129,5 +129,32 @@ describe('curate', () => {
 
     const bad = await curate({ skillDir: dir, result });
     expect(bad.published).toBe(false);
+  });
+});
+
+describe('toSkillsRepoLayout', () => {
+  it('lays a published Gallery entry out under <name>/ with an embedded gallery-entry.json', () => {
+    const entry: GalleryEntry = {
+      name: 'github',
+      apiName: 'GitHub',
+      description: 'GitHub API operations',
+      operations: [{ name: 'list issues', methodClass: 'read', verification: 'passed' }],
+      files: [
+        { path: 'SKILL.md', content: '---\nname: github\n---\n# GitHub' },
+        { path: 'list-issues.sh', content: '#!/bin/bash\necho hi' },
+      ],
+      promptVersion: '2.0.0',
+      generatedAt: '2026-06-18T00:00:00.000Z',
+    };
+
+    const files = toSkillsRepoLayout(entry);
+    const byPath = new Map(files.map((f) => [f.path, f.content]));
+
+    expect(byPath.get('github/SKILL.md')).toBe('---\nname: github\n---\n# GitHub');
+    expect(byPath.get('github/list-issues.sh')).toBe('#!/bin/bash\necho hi');
+
+    const galleryEntryRaw = byPath.get('github/.skillet/gallery-entry.json');
+    expect(galleryEntryRaw).toBeDefined();
+    expect(JSON.parse(galleryEntryRaw as string)).toEqual(entry);
   });
 });

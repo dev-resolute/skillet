@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generateSkill, discoverSpec } from './engine/generate.js';
+import { getModel } from '@earendil-works/pi-ai';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
 import { curate, toSkillsRepoLayout } from './curation/curate.js';
@@ -25,6 +26,7 @@ Options:
   --api-domain  API domain for host pinning (default: inferred from docs-url)
   --output      Output directory for the generated skill (default: ./<skill-name>)
   --max-retries Maximum verification Attempts per operation (default: 3)
+  --model       OpenAI model for generation (default: gpt-4o-mini)
   --credentials JSON object of credentials for live test (default: {})
   --help        Show this help message
 
@@ -139,6 +141,9 @@ function parseArgs(argv: string[]) {
     operations: positional.slice(1),
     name: options['name'],
     specUrl: options['spec'],
+    model: options['model']
+      ? getModel('openai', options['model'] as Parameters<typeof getModel>[1])
+      : undefined,
     apiBase: options['api-base'],
     apiDomain: options['api-domain'],
     output: options['output'],
@@ -200,6 +205,7 @@ async function main() {
     apiDomain: args.apiDomain,
     credentials: args.credentials,
     maxRetries: args.maxRetries,
+    model: args.model,
   });
 
   const outputDir = args.output ?? result.name;

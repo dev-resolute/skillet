@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sliceSpec } from './spec.js';
+import { sliceSpec, detectAuth } from './spec.js';
 
 const simpleSpec = JSON.stringify({
   openapi: '3.0.0',
@@ -234,5 +234,48 @@ describe('sliceSpec', () => {
     expect(schema).toHaveProperty('type');
     expect(schema).toHaveProperty('properties');
     expect(schema).not.toHaveProperty('$ref');
+  });
+});
+
+describe('detectAuth', () => {
+  it('prefers a bearer scheme when the spec also offers legacy apiKey schemes', async () => {
+    const spec = JSON.stringify({
+      openapi: '3.0.0',
+      components: {
+        securitySchemes: {
+          api_email: { type: 'apiKey', in: 'header', name: 'X-Auth-Email' },
+          api_key: { type: 'apiKey', in: 'header', name: 'X-Auth-Key' },
+          api_token: { type: 'http', scheme: 'bearer' },
+        },
+      },
+    });
+
+    const auth = await detectAuth(spec, 'cloudflare');
+
+    expect(auth).toEqual({
+      type: 'bearer',
+      header: 'Authorization',
+      envVars: ['CLOUDFLARE_API_TOKEN'],
+    });
+  });
+
+  it('falls back to a header apiKey scheme when no bearer is offered', async () => {
+    const spec = JSON.stringify({
+      openapi: '3.0.0',
+      components: {
+        securitySchemes: {
+          api_key: { type: 'apiKey', in: 'header', name: 'X-Api-Key' },
+        },
+      },
+    });
+
+    const auth = await detectAuth(spec, 'petstore');
+
+    expect(auth).toEqual({
+      type: 'apiKey',
+      header: 'X-Api-Key',
+      keyName: 'X-Api-Key',
+      envVars: ['PETSTORE_API_KEY'],
+    });
   });
 });

@@ -26,31 +26,39 @@ export async function detectAuth(specText: string, apiName: string): Promise<Aut
 
   const prefix = apiName.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
 
-  for (const [name, scheme] of Object.entries(schemes)) {
-    const s = scheme as Record<string, unknown>;
-    if (s.type === 'http') {
-      const schemeValue = (s.scheme as string)?.toLowerCase();
-      if (schemeValue === 'bearer') {
-        return { type: 'bearer', header: 'Authorization', envVars: [`${prefix}_API_TOKEN`] };
-      }
-      if (schemeValue === 'basic') {
-        return {
-          type: 'basic',
-          header: 'Authorization',
-          envVars: [`${prefix}_EMAIL`, `${prefix}_API_TOKEN`],
-        };
-      }
-    }
-    if (s.type === 'apiKey') {
-      const location = (s.in as string) || 'header';
-      const keyName = (s.name as string) || name;
-      if (location === 'header') {
-        return { type: 'apiKey', header: keyName, keyName, envVars: [`${prefix}_API_KEY`] };
-      }
-    }
-    if (s.type === 'oauth2') {
-      return { type: 'unsupported', reason: 'OAuth2 is not supported in v1' };
-    }
+  // A spec may advertise several schemes (e.g. a legacy apiKey alongside a
+  // modern bearer token). Scan them all and prefer bearer > header apiKey >
+  // basic, rather than taking whichever the spec happens to list first.
+  const entries = Object.entries(schemes).map(([name, scheme]) => ({
+    name,
+    s: scheme as Record<string, unknown>,
+  }));
+
+  const httpScheme = (want: string) =>
+    entries.find(({ s }) => s.type === 'http' && (s.scheme as string)?.toLowerCase() === want);
+
+  if (httpScheme('bearer')) {
+    return { type: 'bearer', header: 'Authorization', envVars: [`${prefix}_API_TOKEN`] };
+  }
+
+  const headerApiKey = entries.find(
+    ({ s }) => s.type === 'apiKey' && ((s.in as string) || 'header') === 'header'
+  );
+  if (headerApiKey) {
+    const keyName = (headerApiKey.s.name as string) || headerApiKey.name;
+    return { type: 'apiKey', header: keyName, keyName, envVars: [`${prefix}_API_KEY`] };
+  }
+
+  if (httpScheme('basic')) {
+    return {
+      type: 'basic',
+      header: 'Authorization',
+      envVars: [`${prefix}_EMAIL`, `${prefix}_API_TOKEN`],
+    };
+  }
+
+  if (entries.some(({ s }) => s.type === 'oauth2')) {
+    return { type: 'unsupported', reason: 'OAuth2 is not supported in v1' };
   }
 
   return { type: 'unsupported', reason: 'No supported security scheme found' };

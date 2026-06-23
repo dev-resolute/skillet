@@ -35,7 +35,11 @@ export async function fetchSkill(name: string): Promise<FetchedSkill> {
   }
 
   const entry = (await res.json()) as GalleryEntry;
-  if (!Array.isArray(entry.files) || entry.files.length === 0) {
+  if (
+    !Array.isArray(entry.files) ||
+    entry.files.length === 0 ||
+    !Array.isArray(entry.operations)
+  ) {
     throw new Error(`gallery entry for "${name}" is malformed`);
   }
   return { entry, files: entry.files };

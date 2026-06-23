@@ -107,4 +107,31 @@ describe('installSkill', () => {
     expect(existsSync(join(dest, 'jira', 'stale.sh'))).toBe(false);
     expect(readFileSync(join(dest, 'jira', 'SKILL.md'), 'utf8')).toContain('# Jira');
   });
+
+  it('does not remove an existing install when the fetch 404s', async () => {
+    dest = mkdtempSync(join(tmpdir(), 'skillet-add-'));
+    mkdirSync(join(dest, 'jira'), { recursive: true });
+    writeFileSync(join(dest, 'jira', 'keep.sh'), 'keep\n');
+
+    mockFetchOnce({}, { ok: false, status: 404 });
+
+    await expect(installSkill('jira', dest)).rejects.toBeInstanceOf(SkillNotFoundError);
+    expect(existsSync(join(dest, 'jira', 'keep.sh'))).toBe(true);
+  });
+
+  it('counts only passed operations in verifiedCount', async () => {
+    dest = mkdtempSync(join(tmpdir(), 'skillet-add-'));
+    const mixed: GalleryEntry = {
+      ...sampleEntry,
+      operations: [
+        { name: 'a', methodClass: 'read', verification: 'passed' },
+        { name: 'b', methodClass: 'mutating', verification: 'blocked' },
+      ],
+    };
+    mockFetchOnce(mixed);
+
+    const result = await installSkill('jira', dest);
+
+    expect(result.verifiedCount).toBe(1);
+  });
 });

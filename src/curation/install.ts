@@ -3,7 +3,10 @@
  * skillet-skills repo and write them into pi's skills directory.
  * Trusted-surface (CLI) only; the engine never imports this.
  */
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import type { GalleryEntry, SkillFile } from '../types.js';
+import { createSkillWriter } from '../skill-writer.js';
 
 const REPO_RAW_BASE =
   'https://raw.githubusercontent.com/dev-resolute/skillet-skills/main';
@@ -36,4 +39,25 @@ export async function fetchSkill(name: string): Promise<FetchedSkill> {
     throw new Error(`gallery entry for "${name}" is malformed`);
   }
   return { entry, files: entry.files };
+}
+
+export interface InstallResult {
+  apiName: string;
+  installedPath: string;
+  verifiedCount: number;
+}
+
+export async function installSkill(name: string, destDir: string): Promise<InstallResult> {
+  const { entry, files } = await fetchSkill(name);
+  const installedPath = join(destDir, name);
+
+  rmSync(installedPath, { recursive: true, force: true });
+
+  const writeResult = await createSkillWriter().write(files, installedPath);
+  if (!writeResult.success) {
+    throw new Error(`failed to write skill "${name}": ${writeResult.errors.join('; ')}`);
+  }
+
+  const verifiedCount = entry.operations.filter((op) => op.verification === 'passed').length;
+  return { apiName: entry.apiName, installedPath, verifiedCount };
 }

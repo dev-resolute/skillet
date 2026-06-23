@@ -6,6 +6,8 @@ import { getModel } from '@earendil-works/pi-ai';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
 import { curate, toSkillsRepoLayout } from './curation/curate.js';
+import { installSkill, SkillNotFoundError } from './curation/install.js';
+import { homedir } from 'node:os';
 import type { SkillResult } from './types.js';
 
 function showHelp() {
@@ -37,6 +39,13 @@ Curation (trusted surface — actually executes read-operation scripts):
   environment, enforces the publish bar, and emits .skillet/gallery-entry.json.
   With --out, also writes the full published skill into DIR/<name>/ (ready to
   commit into the skillet-skills repo).
+
+Install (fetch a curated skill into pi):
+  skillet add <name> [--dest DIR]
+
+  Downloads the curated skill <name> from the skillet-skills gallery and
+  writes it to DIR/<name>/ (default ~/.pi/agent/skills/<name>), where pi
+  discovers it automatically. Re-running updates the skill in place.
 
 Examples:
   skillet https://docs.example.com/api "list users" "get user"
@@ -98,6 +107,32 @@ async function curateCommand(argv: string[]) {
   }
 }
 
+async function addCommand(argv: string[]) {
+  const [name] = argv;
+  if (!name || name.startsWith('--')) {
+    showHelp();
+    process.exit(1);
+  }
+
+  const destDir = flagValue(argv, '--dest') ?? join(homedir(), '.pi/agent/skills');
+
+  try {
+    const result = await installSkill(name, destDir);
+    console.log(
+      `\n✅ Installed ${result.apiName} → ${result.installedPath}/ (${result.verifiedCount} verified ops).`
+    );
+  } catch (err) {
+    if (err instanceof SkillNotFoundError) {
+      console.error(
+        `\n❌ Skill "${name}" not found in the gallery. Browse skills at skillet.resolute.dev.`
+      );
+    } else {
+      console.error(`\n❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+    process.exit(1);
+  }
+}
+
 function flagValue(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
   return index >= 0 ? argv[index + 1] : undefined;
@@ -155,6 +190,11 @@ function parseArgs(argv: string[]) {
 async function main() {
   if (process.argv[2] === 'curate') {
     await curateCommand(process.argv.slice(3));
+    return;
+  }
+
+  if (process.argv[2] === 'add') {
+    await addCommand(process.argv.slice(3));
     return;
   }
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { generateSkill, discoverSpec } from './engine/generate.js';
 import { getModel } from '@earendil-works/pi-ai';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
 import { curate, toSkillsRepoLayout } from './curation/curate.js';
 import { installSkill, SkillNotFoundError } from './curation/install.js';
-import { homedir } from 'node:os';
 import type { SkillResult } from './types.js';
 
 function showHelp() {

@@ -1,10 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchSkill, SkillNotFoundError } from './install.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fetchSkill, installSkill, SkillNotFoundError } from './install.js';
 import type { GalleryEntry } from '../types.js';
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installSkill } from './install.js';
 
 const sampleEntry: GalleryEntry = {
   name: 'jira',
@@ -32,12 +31,14 @@ function mockFetchOnce(body: unknown, init: { ok?: boolean; status?: number } = 
 }
 
 describe('fetchSkill', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it('fetches the gallery entry and returns entry + files', async () => {
-    vi.stubGlobal('fetch', vi.fn());
     mockFetchOnce(sampleEntry);
 
     const result = await fetchSkill('jira');
@@ -51,14 +52,18 @@ describe('fetchSkill', () => {
   });
 
   it('throws SkillNotFoundError on 404', async () => {
-    vi.stubGlobal('fetch', vi.fn());
     mockFetchOnce({}, { ok: false, status: 404 });
 
     await expect(fetchSkill('nope')).rejects.toBeInstanceOf(SkillNotFoundError);
   });
 
+  it('throws on a non-404 error status', async () => {
+    mockFetchOnce({}, { ok: false, status: 500 });
+
+    await expect(fetchSkill('boom')).rejects.toThrow(/500/);
+  });
+
   it('throws when the entry is malformed (no files array)', async () => {
-    vi.stubGlobal('fetch', vi.fn());
     mockFetchOnce({ name: 'broken', apiName: 'Broken' });
 
     await expect(fetchSkill('broken')).rejects.toThrow(/malformed/);
@@ -68,6 +73,9 @@ describe('fetchSkill', () => {
 describe('installSkill', () => {
   let dest: string;
 
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     if (dest) rmSync(dest, { recursive: true, force: true });
@@ -75,7 +83,6 @@ describe('installSkill', () => {
 
   it('writes SKILL.md + scripts and never creates .skillet/', async () => {
     dest = mkdtempSync(join(tmpdir(), 'skillet-add-'));
-    vi.stubGlobal('fetch', vi.fn());
     mockFetchOnce(sampleEntry);
 
     const result = await installSkill('jira', dest);
@@ -93,7 +100,6 @@ describe('installSkill', () => {
     mkdirSync(join(dest, 'jira'), { recursive: true });
     writeFileSync(join(dest, 'jira', 'stale.sh'), 'old\n');
 
-    vi.stubGlobal('fetch', vi.fn());
     mockFetchOnce(sampleEntry);
 
     await installSkill('jira', dest);

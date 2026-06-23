@@ -45,4 +45,18 @@ describe('fetchSkill', () => {
     expect(result.files).toHaveLength(2);
     expect(result.files[0].path).toBe('SKILL.md');
   });
+
+  it('throws SkillNotFoundError on 404', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    mockFetchOnce({}, { ok: false, status: 404 });
+
+    await expect(fetchSkill('nope')).rejects.toBeInstanceOf(SkillNotFoundError);
+  });
+
+  it('throws when the entry is malformed (no files array)', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    mockFetchOnce({ name: 'broken', apiName: 'Broken' });
+
+    await expect(fetchSkill('broken')).rejects.toThrow(/malformed/);
+  });
 });

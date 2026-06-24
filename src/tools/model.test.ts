@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getModels } from '@earendil-works/pi-ai';
-import { resolveModel, ModelResolutionError } from './model.js';
+import { getModels, getEnvApiKey } from '@earendil-works/pi-ai';
+import { resolveModel, ModelResolutionError, KEY_ENV_VARS } from './model.js';
 
 const ENV_KEYS = [
   'SKILLET_PROVIDER', 'SKILLET_MODEL',
@@ -78,6 +78,65 @@ describe('resolveModel — validation', () => {
     } catch (err) {
       expect((err as Error).message).toContain('not-a-provider');
       expect((err as Error).message).toContain('openai');
+    }
+  });
+
+  it('requires an explicit model for a non-openai provider, listing ids', () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    try {
+      resolveModel({ provider: 'anthropic' });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ModelResolutionError);
+      expect((err as Error).message).toMatch(/model/i);
+      expect((err as Error).message).toContain(getModels('anthropic')[0].id);
+    }
+  });
+
+  it('rejects an invalid model id, listing valid ids', () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    try {
+      resolveModel({ provider: 'anthropic', modelId: 'totally-made-up' });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ModelResolutionError);
+      expect((err as Error).message).toContain('totally-made-up');
+      expect((err as Error).message).toContain(getModels('anthropic')[0].id);
+    }
+  });
+
+  it('reports a missing API key, naming the env var', () => {
+    const googleId = getModels('google')[0].id;
+    try {
+      resolveModel({ provider: 'google', modelId: googleId });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ModelResolutionError);
+      expect((err as Error).message).toContain('GEMINI_API_KEY');
+    }
+  });
+
+  it('aggregates: model AND key missing → one error naming both', () => {
+    try {
+      resolveModel({ provider: 'google' });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ModelResolutionError);
+      const msg = (err as Error).message;
+      expect(msg).toMatch(/model/i);
+      expect(msg).toContain('GEMINI_API_KEY');
+    }
+  });
+});
+
+describe('KEY_ENV_VARS drift guard', () => {
+  it('every mapped env var is recognized by pi-ai getEnvApiKey', () => {
+    for (const [provider, vars] of Object.entries(KEY_ENV_VARS)) {
+      for (const varName of vars) {
+        vi.stubEnv(varName, 'stub-value');
+        expect(getEnvApiKey(provider)).toBe('stub-value');
+        vi.unstubAllEnvs();
+      }
     }
   });
 });

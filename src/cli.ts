@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { generateSkill, discoverSpec } from './engine/generate.js';
-import { getModel } from '@earendil-works/pi-ai';
+import { resolveModel, ModelResolutionError, type ResolvedModel } from './tools/model.js';
 import { listOperations } from './tools/spec.js';
 import { createSkillWriter } from './skill-writer.js';
 import { curate, toSkillsRepoLayout } from './curation/curate.js';
@@ -28,7 +28,10 @@ Options:
   --api-domain  API domain for host pinning (default: inferred from docs-url)
   --output      Output directory for the generated skill (default: ./<skill-name>)
   --max-retries Maximum verification Attempts per operation (default: 3)
-  --model       OpenAI model for generation (default: gpt-4o-mini)
+  --provider    LLM provider for generation (default: openai). Any pi-ai provider,
+                e.g. anthropic, google, opencode. See errors for valid ids.
+  --model       Model id for the provider (default: gpt-4o-mini for openai;
+                required for other providers). Or set SKILLET_PROVIDER / SKILLET_MODEL.
   --credentials JSON object of credentials for live test (default: {})
   --help        Show this help message
 
@@ -176,9 +179,8 @@ function parseArgs(argv: string[]) {
     operations: positional.slice(1),
     name: options['name'],
     specUrl: options['spec'],
-    model: options['model']
-      ? getModel('openai', options['model'] as Parameters<typeof getModel>[1])
-      : undefined,
+    provider: options['provider'],
+    modelId: options['model'],
     apiBase: options['api-base'],
     apiDomain: options['api-domain'],
     output: options['output'],
@@ -236,6 +238,18 @@ async function main() {
   console.log(`🔍 Fetching docs: ${args.docsUrl}`);
   console.log(`🎯 Operations: ${operations.join(', ')}`);
 
+  let resolved: ResolvedModel;
+  try {
+    resolved = resolveModel({ provider: args.provider, modelId: args.modelId });
+  } catch (err) {
+    if (err instanceof ModelResolutionError) {
+      console.error(`\n❌ ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
+  console.log(`🤖 Model: ${resolved.provider}/${resolved.modelId}`);
+
   const result = await generateSkill({
     docsUrl,
     specUrl: args.specUrl,
@@ -245,7 +259,7 @@ async function main() {
     apiDomain: args.apiDomain,
     credentials: args.credentials,
     maxRetries: args.maxRetries,
-    model: args.model,
+    model: resolved.model,
   });
 
   const outputDir = args.output ?? result.name;

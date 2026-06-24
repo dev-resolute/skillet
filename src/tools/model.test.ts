@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getModels } from '@earendil-works/pi-ai';
-import { resolveModel } from './model.js';
+import { resolveModel, ModelResolutionError } from './model.js';
 
 const ENV_KEYS = [
   'SKILLET_PROVIDER', 'SKILLET_MODEL',
@@ -66,5 +66,18 @@ describe('resolveModel — selection', () => {
 
     expect(result.provider).toBe('openai');
     expect(result.modelId).toBe('gpt-4o-mini');
+  });
+});
+
+describe('resolveModel — validation', () => {
+  it('throws on an unknown provider, listing valid ones', () => {
+    expect(() => resolveModel({ provider: 'not-a-provider', modelId: 'x' }))
+      .toThrowError(ModelResolutionError);
+    try {
+      resolveModel({ provider: 'not-a-provider', modelId: 'x' });
+    } catch (err) {
+      expect((err as Error).message).toContain('not-a-provider');
+      expect((err as Error).message).toContain('openai');
+    }
   });
 });

@@ -107,6 +107,9 @@ Required repository secrets:
 
 - Node.js 20+
 - An LLM API key (OpenAI, Anthropic, etc.) in environment variables
+- Optional: `CONTEXT_DEV_API_KEY` — when set, `skillet generate` fetches docs
+  via context.dev's scrape API for cleaner markdown; without it, skillet falls
+  back to raw HTTP (ADR-0005). Not used by `skillet add`.
 
 ## License
 

@@ -44,4 +44,27 @@ describe('resolveModel — selection', () => {
     expect(result.modelId).toBe(someAnthropicId);
     expect(result.model).toBeTruthy();
   });
+
+  it('reads SKILLET_PROVIDER / SKILLET_MODEL from env', () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    const someAnthropicId = getModels('anthropic')[0].id;
+    process.env.SKILLET_PROVIDER = 'anthropic';
+    process.env.SKILLET_MODEL = someAnthropicId;
+
+    const result = resolveModel();
+
+    expect(result.provider).toBe('anthropic');
+    expect(result.modelId).toBe(someAnthropicId);
+  });
+
+  it('lets explicit opts override env', () => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.SKILLET_PROVIDER = 'anthropic';
+    process.env.SKILLET_MODEL = 'some-other-model';
+
+    const result = resolveModel({ provider: 'openai', modelId: 'gpt-4o-mini' });
+
+    expect(result.provider).toBe('openai');
+    expect(result.modelId).toBe('gpt-4o-mini');
+  });
 });

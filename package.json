@@ -1,6 +1,6 @@
 {
   "name": "@resolutedev/skillet",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Docs-to-pi-skill generator: turn API docs into verified curl+bash skills",
   "type": "module",
   "main": "dist/index.js",

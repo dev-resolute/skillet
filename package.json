@@ -33,6 +33,10 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev-resolute/skillet.git"
+  },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.78.1",
     "@earendil-works/pi-ai": "^0.78.1",
